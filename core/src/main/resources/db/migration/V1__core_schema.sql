@@ -59,8 +59,7 @@ CREATE TABLE core.payment_instruction (
     created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-    CONSTRAINT uq_idempotency UNIQUE
-        (debtor_account, end_to_end_id, amount, currency, requested_exec_date)
+    CONSTRAINT uq_reference UNIQUE (debtor_account, end_to_end_id)
 );
 
 CREATE INDEX ON core.payment_instruction (state, created_at);
@@ -69,6 +68,9 @@ CREATE INDEX ON core.payment_instruction (settlement_date, selected_rail);
 
 COMMENT ON COLUMN core.payment_instruction.state_version IS
     'Optimistic lock. Every state transition increments it and every update carries WHERE state_version = :expected. A redelivered message that would repeat a transition updates zero rows and is discarded.';
+
+COMMENT ON CONSTRAINT uq_reference ON core.payment_instruction IS
+    'EndToEndId is the senders own unique reference for a payment, scoped to the debtor account it was sent from. A collision on (debtor_account, end_to_end_id) means either a retry of the same payment or a sender defect (the same reference reused for a different payment) -- the two are distinguished by comparing the rest of the content, not by widening this key. Widening it (e.g. to include creditor_account) would let two different payments share one reference, which breaks reconciliation on the senders side instead of surfacing the error.';
 
 -- core.instruction_event: append-only. This table is the audit trail.
 CREATE TABLE core.instruction_event (

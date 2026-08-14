@@ -14,6 +14,7 @@
 
   <modules>
     <module>core</module>
+    <module>intake-service</module>
   </modules>
 
   <properties>
@@ -24,6 +25,7 @@
 
     <spring-boot.version>3.2.5</spring-boot.version>
     <testcontainers.version>1.21.4</testcontainers.version>
+    <jaxb2-maven-plugin.version>3.3.0</jaxb2-maven-plugin.version>
   </properties>
 
   <dependencyManagement>
@@ -69,6 +71,20 @@
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-failsafe-plugin</artifactId>
           <version>3.2.5</version>
+        </plugin>
+        <!-- Not part of Spring Boot's dependency-management (that only
+             covers dependencies, and even then only through parent
+             inheritance, which this multi-module build doesn't use for
+             plugins) so its version is pinned explicitly here. -->
+        <plugin>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-maven-plugin</artifactId>
+          <version>${spring-boot.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>jaxb2-maven-plugin</artifactId>
+          <version>${jaxb2-maven-plugin.version}</version>
         </plugin>
       </plugins>
     </pluginManagement>

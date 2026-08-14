@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: intake-service
+  datasource:
+    # stringtype=unspecified lets the driver send enum values (InstructionState)
+    # as untyped string literals so Postgres can implicitly cast them to the
+    # native core.instruction_state enum column type on INSERT/UPDATE. Without
+    # it, pgjdbc declares String parameters as varchar and Postgres refuses
+    # the implicit varchar -> enum cast.
+    url: jdbc:postgresql://localhost:5432/payments?stringtype=unspecified
+    username: payments
+    password: payments
+  jpa:
+    open-in-view: false
+    hibernate:
+      # Flyway (see below) is the sole owner of the schema. Hibernate's
+      # "validate" mode is skipped too: it does not reliably validate columns
+      # backed by a native Postgres enum type (core.instruction_state) and
+      # produces false-positive schema mismatches against them.
+      ddl-auto: none
+  flyway:
+    enabled: true
+    # No `locations` override: the default (classpath:db/migration) resolves
+    # against this service's full classpath, which includes the migrations
+    # packaged inside the core dependency's jar. intake-service does not own
+    # a migration directory of its own.
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+      group:
+        readiness:
+          include: readinessState,db
+
+server:
+  port: 8081

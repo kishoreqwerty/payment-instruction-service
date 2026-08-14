@@ -66,15 +66,17 @@ class MigrationTest {
     }
 
     @Test
-    void uqIdempotencyExistsAndIsUnique() throws SQLException {
+    void uqReferenceExistsAndIsUnique() throws SQLException {
         try (Connection conn = connect();
                 PreparedStatement ps = conn.prepareStatement(
                         "SELECT indexdef FROM pg_indexes "
                                 + "WHERE schemaname = 'core' AND tablename = 'payment_instruction' "
-                                + "AND indexname = 'uq_idempotency'")) {
+                                + "AND indexname = 'uq_reference'")) {
             ResultSet rs = ps.executeQuery();
-            assertThat(rs.next()).as("uq_idempotency index should exist").isTrue();
-            assertThat(rs.getString(1)).containsIgnoringCase("UNIQUE");
+            assertThat(rs.next()).as("uq_reference index should exist").isTrue();
+            assertThat(rs.getString(1))
+                    .containsIgnoringCase("UNIQUE")
+                    .contains("debtor_account", "end_to_end_id");
         }
     }
 
@@ -94,7 +96,7 @@ class MigrationTest {
     }
 
     @Test
-    void duplicateIdempotencyKeyRaisesConstraintViolation() throws SQLException {
+    void duplicateReferenceRaisesConstraintViolation() throws SQLException {
         try (Connection conn = connect()) {
             conn.setAutoCommit(true);
             insertInstruction(conn, UUID.randomUUID(), "E2E-DUP", "ACC-DUP", new java.math.BigDecimal("10.00"));
@@ -102,7 +104,28 @@ class MigrationTest {
             assertThatThrownBy(() ->
                     insertInstruction(conn, UUID.randomUUID(), "E2E-DUP", "ACC-DUP", new java.math.BigDecimal("10.00")))
                     .isInstanceOf(SQLException.class)
-                    .hasMessageContaining("uq_idempotency");
+                    .hasMessageContaining("uq_reference");
+        }
+    }
+
+    /**
+     * uq_reference is (debtor_account, end_to_end_id) only -- it does not
+     * look at amount, currency, creditor or date. A collision on the
+     * reference with different content is exactly the sender-defect case the
+     * constraint is designed to surface: the database's job is to catch the
+     * collision, not to decide whether it's a harmless retry or a conflict.
+     * That comparison is application-level (see PHASE-2-REPORT.md).
+     */
+    @Test
+    void sameReferenceWithDifferentContentStillCollides() throws SQLException {
+        try (Connection conn = connect()) {
+            conn.setAutoCommit(true);
+            insertInstruction(conn, UUID.randomUUID(), "E2E-CONFLICT", "ACC-CONFLICT", new java.math.BigDecimal("10.00"));
+
+            assertThatThrownBy(() -> insertInstruction(
+                            conn, UUID.randomUUID(), "E2E-CONFLICT", "ACC-CONFLICT", new java.math.BigDecimal("999.00")))
+                    .isInstanceOf(SQLException.class)
+                    .hasMessageContaining("uq_reference");
         }
     }
 

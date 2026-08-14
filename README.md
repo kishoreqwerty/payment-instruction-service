@@ -6,7 +6,7 @@ A payment instruction processing and exception handling service. It accepts ISO 
 
 - Java 21
 - Maven multi-module
-- Spring Boot 3.2 (services, from Phase 2 onward)
+- Spring Boot 3.2 (`intake-service`, from Phase 2)
 - PostgreSQL 16, Flyway
 - Kafka API — Redpanda locally (from Phase 3 onward)
 - JUnit 5, AssertJ, Testcontainers
@@ -14,12 +14,16 @@ A payment instruction processing and exception handling service. It accepts ISO 
 
 ## Running the tests
 
-Requires a JDK 21 and a local Docker daemon (Testcontainers starts real PostgreSQL 16 containers for the migration tests).
+Requires a JDK 21 and a local Docker daemon (Testcontainers starts real PostgreSQL 16 containers for the migration and integration tests).
 
 ```
 mvn clean verify
 ```
 
+## Running locally
+
+`docker-compose up -d` starts PostgreSQL 16, then `mvn -pl intake-service spring-boot:run`.
+
 ## Status
 
-Phase 1 of 13 — domain core and schema
+Phase 2 of 13 — intake service. `POST /v1/instructions` validates a `pain.001` against its XSD, persists the raw bytes regardless of outcome, and resolves each submission to a new instruction (202), an identical-content retry (200), or a reference conflict (409) — same `(debtor_account, end_to_end_id)` with different content is rejected, not silently merged or dropped. See `.notes/reports/PHASE-2-REPORT.md`.
