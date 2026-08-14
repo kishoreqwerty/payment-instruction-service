@@ -1,0 +1,11 @@
+target/
+CLAUDE.md
+.notes/
+.github/modernize/
+.idea/
+*.iml
+.vscode/
+.DS_Store
+.env
+*.log
+docs/workspace.json
