@@ -15,5 +15,64 @@ services:
       timeout: 5s
       retries: 10
 
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.4
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --memory=512M
+      - --overprovisioned
+      - --node-id=0
+      # Two listeners: "internal" is what other containers on this compose
+      # network (redpanda-topics, redpanda-console, a containerized service)
+      # resolve via the "redpanda" service name; "external" is what a
+      # host-run process (e.g. `mvn spring-boot:run`) reaches via localhost.
+      # A single advertised address can't serve both: whichever host name it
+      # names, connections from the other side fail after the initial
+      # metadata handshake once the client tries to follow the advertised
+      # address.
+      - --kafka-addr
+      - internal://0.0.0.0:9092,external://0.0.0.0:29092
+      - --advertise-kafka-addr
+      - internal://redpanda:9092,external://localhost:29092
+      # Off deliberately: auto-created topics get default partition counts,
+      # which would silently break the per-instruction ordering the 12
+      # partitions on payments.received are there to preserve. Topics are
+      # created explicitly by the redpanda-topics init step below.
+      - --set
+      - redpanda.auto_create_topics_enabled=false
+    ports:
+      - "29092:29092"
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # One-shot init step, not auto.create.topics.enable (see above). Exits
+  # after creating both topics; `docker compose up` leaves it stopped.
+  redpanda-topics:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.4
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        rpk topic create payments.received --partitions 12 --replicas 1 --brokers redpanda:9092 -c retention.ms=604800000
+        rpk topic create payments.dlq --partitions 3 --replicas 1 --brokers redpanda:9092 -c retention.ms=7776000000
+
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:v2.7.2
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    ports:
+      - "8090:8080"
+
 volumes:
   postgres-data:

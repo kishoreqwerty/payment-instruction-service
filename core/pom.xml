@@ -17,6 +17,48 @@
   <description>Domain core: instruction state machine, domain value types, and database schema</description>
 
   <dependencies>
+    <!-- core stays a plain library: no spring-boot-starter-*. These three
+         are plain Spring Framework (not Boot) and are genuinely needed:
+         OutboxPublisher is a @Component a Boot service picks up via
+         component scan, its DB access is @Transactional, and it polls with
+         plain JdbcTemplate rather than pulling JPA/Hibernate into core just
+         for a handful of hand-written statements. -->
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-context</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-tx</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-jdbc</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.apache.kafka</groupId>
+      <artifactId>kafka-clients</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.datatype</groupId>
+      <artifactId>jackson-datatype-jsr310</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-core</artifactId>
+    </dependency>
+
     <!-- Flyway and the PostgreSQL driver are needed only to exercise the
          migrations in this module's own tests; they run as pure SQL
          resources and are not invoked from main code. -->
@@ -54,6 +96,11 @@
     <dependency>
       <groupId>org.testcontainers</groupId>
       <artifactId>postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>redpanda</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>

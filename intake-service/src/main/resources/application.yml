@@ -25,6 +25,16 @@ spring:
     # packaged inside the core dependency's jar. intake-service does not own
     # a migration directory of its own.
 
+payments:
+  kafka:
+    # 29092 is docker-compose's external listener for Redpanda -- see the
+    # comment on that service for why a host-run process and other
+    # containers can't share one advertised address.
+    bootstrap-servers: localhost:29092
+  outbox:
+    batch-size: 100
+    known-topics: payments.received
+
 management:
   endpoints:
     web:

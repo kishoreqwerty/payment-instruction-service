@@ -8,13 +8,13 @@ A payment instruction processing and exception handling service. It accepts ISO 
 - Maven multi-module
 - Spring Boot 3.2 (`intake-service`, from Phase 2)
 - PostgreSQL 16, Flyway
-- Kafka API — Redpanda locally (from Phase 3 onward)
+- Kafka API — Redpanda locally (from Phase 3)
 - JUnit 5, AssertJ, Testcontainers
 - React 18 + TypeScript + Vite (dashboard, from Phase 9)
 
 ## Running the tests
 
-Requires a JDK 21 and a local Docker daemon (Testcontainers starts real PostgreSQL 16 containers for the migration and integration tests).
+Requires a JDK 21 and a local Docker daemon (Testcontainers starts real PostgreSQL 16 and Redpanda containers for the migration, outbox and integration tests).
 
 ```
 mvn clean verify
@@ -22,8 +22,8 @@ mvn clean verify
 
 ## Running locally
 
-`docker-compose up -d` starts PostgreSQL 16, then `mvn -pl intake-service spring-boot:run`.
+`docker-compose up -d postgres redpanda`, then `docker-compose up redpanda-topics` (one-shot: creates `payments.received` and `payments.dlq` with their configured partition counts and retention; exits once done), then `mvn -pl intake-service spring-boot:run`. Redpanda Console is at `localhost:8090` for browsing topics.
 
 ## Status
 
-Phase 2 of 13 — intake service. `POST /v1/instructions` validates a `pain.001` against its XSD, persists the raw bytes regardless of outcome, and resolves each submission to a new instruction (202), an identical-content retry (200), or a reference conflict (409) — same `(debtor_account, end_to_end_id)` with different content is rejected, not silently merged or dropped. See `.notes/reports/PHASE-2-REPORT.md`.
+Phase 3 of 13 — outbox and event stream. Every instruction `intake-service` writes now also writes a `core.outbox` row in the same transaction; a shared `OutboxPublisher` in `core` polls with `SKIP LOCKED`, produces to Redpanda (`payments.received`, 12 partitions, keyed by `instructionId`) strictly in `outbox_id` order, and marks rows published. Duplication under a crash is expected and proven by test; loss is not. `processing-service` and any business consumer are not built yet — nothing consumes `payments.received` except a test consumer. See `.notes/reports/PHASE-3-REPORT.md`.
