@@ -1,4 +1,4 @@
-package com.kishore.payments.intake.instruction;
+package com.kishore.payments.core.instruction;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 

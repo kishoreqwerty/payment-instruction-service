@@ -15,6 +15,7 @@
   <modules>
     <module>core</module>
     <module>intake-service</module>
+    <module>processing-service</module>
   </modules>
 
   <properties>
@@ -66,6 +67,15 @@
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-surefire-plugin</artifactId>
           <version>3.2.5</version>
+          <configuration>
+            <!-- Mockito 5.7.0 (pinned by the Spring Boot 3.2.5 BOM) bundles
+                 a ByteBuddy that doesn't yet recognise newer JDKs than it
+                 shipped against; @SpyBean/@MockBean tests fail to create
+                 their proxies without this flag. Not a dependency change,
+                 just ByteBuddy's own documented opt-in for running against a
+                 JDK newer than its official support list. -->
+            <argLine>-Dnet.bytebuddy.experimental=true</argLine>
+          </configuration>
         </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>

@@ -1,4 +1,4 @@
-package com.kishore.payments.intake.instruction;
+package com.kishore.payments.core.instruction;
 
 import java.util.Optional;
 import java.util.UUID;

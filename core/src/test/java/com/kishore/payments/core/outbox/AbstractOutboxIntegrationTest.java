@@ -90,13 +90,18 @@ abstract class AbstractOutboxIntegrationTest {
     /** Insert an outbox row directly, bypassing OutboxWriter, for tests that only care about the publisher's read side. */
     UUID insertOutboxRow(String topic, String partitionKey, String payload) {
         UUID aggregateId = UUID.randomUUID();
+        insertOutboxRow(aggregateId, topic, partitionKey, payload);
+        return aggregateId;
+    }
+
+    /** Same as {@link #insertOutboxRow(String, String, String)}, but for tests that need several rows to share one aggregate_id. */
+    void insertOutboxRow(UUID aggregateId, String topic, String partitionKey, String payload) {
         JDBC.update(
                 "INSERT INTO core.outbox (aggregate_id, topic, partition_key, headers, payload) VALUES (?, ?, ?, '{}'::jsonb, ?::jsonb)",
                 aggregateId,
                 topic,
                 partitionKey,
                 payload);
-        return aggregateId;
     }
 
     List<ConsumerRecord<String, String>> consumeAll(Consumer<String, String> consumer, String topic, int expectedCount, Duration timeout) {

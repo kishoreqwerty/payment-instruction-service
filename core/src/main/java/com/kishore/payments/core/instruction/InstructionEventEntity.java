@@ -1,4 +1,4 @@
-package com.kishore.payments.intake.instruction;
+package com.kishore.payments.core.instruction;
 
 import com.kishore.payments.core.domain.ActorType;
 import com.kishore.payments.core.state.InstructionState;

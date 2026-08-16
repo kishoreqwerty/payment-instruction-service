@@ -1,0 +1,55 @@
+spring:
+  application:
+    name: processing-service
+  main:
+    # No HTTP API: only a Kafka consumer and actuator endpoints, which
+    # actuator's own embedded server config (management.server.port) can
+    # still expose without the full web stack.
+    web-application-type: none
+  datasource:
+    url: jdbc:postgresql://localhost:5432/payments?stringtype=unspecified
+    username: payments
+    password: payments
+  jpa:
+    open-in-view: false
+    hibernate:
+      # Flyway (core's migrations plus this service's own V2__refdata_schema.sql)
+      # is the sole owner of the schema -- see intake-service's application.yml
+      # for why "validate" is skipped too.
+      ddl-auto: none
+  flyway:
+    enabled: true
+    # No locations override: the default (classpath:db/migration) merges
+    # core's bundled migration with this service's own V2 migration from the
+    # same classpath location, ordered by version number.
+
+payments:
+  kafka:
+    bootstrap-servers: localhost:29092
+    consumer-group: processing-service
+    received-partitions: 12
+    validated-partitions: 12
+    enriched-partitions: 12
+    dlq-topic: payments.dlq
+    dlq-partitions: 3
+  outbox:
+    batch-size: 100
+    known-topics: payments.validated,payments.enriched,payments.routed,payments.exceptions
+    retention: 7d
+    retention-batch-size: 1000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+      group:
+        readiness:
+          include: readinessState,db
+  server:
+    port: 8082

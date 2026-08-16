@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 
+import com.kishore.payments.core.instruction.PaymentInstructionEntity;
 import com.kishore.payments.core.outbox.OutboxWriter;
 import com.kishore.payments.intake.AbstractIntegrationTest;
 import java.math.BigDecimal;

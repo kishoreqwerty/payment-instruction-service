@@ -5,12 +5,16 @@ import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,15 +38,34 @@ import org.springframework.transaction.support.TransactionTemplate;
  * a second replica could pick up a row this one is mid-flight on the moment
  * the select's own transaction ended.
  *
- * <p>Rows are produced strictly in {@code outbox_id} order, awaiting each
- * broker acknowledgement before producing the next, rather than firing the
- * whole batch concurrently. Kafka only guarantees ordering within a
- * partition; the partition key here is {@code instruction_id}, so two events
- * for the same instruction produced out of order by two overlapping batches
- * would break the per-instruction ordering .notes/ARCHITECTURE.md §4.2
- * depends on. Synchronous in-order production costs throughput -- see
- * .notes/reports/PHASE-3-REPORT.md §5 for the trade-off and what would make
- * it worth revisiting.
+ * <p>{@code SKIP LOCKED} alone only guarantees disjoint ROWS across
+ * concurrent replicas, not disjoint AGGREGATES: two replicas can each claim a
+ * different row belonging to the same instruction and produce them in
+ * whatever order their own transactions happen to finish in, which breaks
+ * the per-instruction ordering .notes/ARCHITECTURE.md §4.2 depends on (proven
+ * by {@code OutboxOrderingAcrossReplicasTest} against the pre-fix
+ * implementation). {@code pg_try_advisory_xact_lock(hashtext(aggregate_id))}
+ * in the select's own predicate closes that: it's a non-blocking, per-session,
+ * transaction-scoped lock keyed by aggregate, so once one replica's
+ * transaction holds it, every other pending row for that same aggregate is
+ * excluded from every other replica's batch -- not just the row that
+ * happened to get {@code FOR UPDATE}'d -- until this transaction commits or
+ * rolls back. This preserves horizontal scaling (unrelated aggregates still
+ * claim and produce fully in parallel across replicas) at the cost of one
+ * cheap lock acquisition per candidate row and occasional unrelated
+ * aggregates serializing against each other on a {@code hashtext} collision.
+ * See .notes/reports/PHASE-4-REPORT.md §5 for why this was chosen over a
+ * single active publisher.
+ *
+ * <p>Sends within one batch are pipelined -- fired in {@code outbox_id}
+ * order without waiting for each broker acknowledgement individually, then
+ * awaited once at the end -- rather than blocking after every record.
+ * Ordering still holds because the producer is configured with
+ * {@code acks=all}, {@code enable.idempotence=true} and
+ * {@code max.in.flight.requests.per.connection=1} (see
+ * {@link OutboxProducerFactory}): the client library itself serializes
+ * requests on the wire in call order, so blocking per record bought nothing
+ * but latency.
  */
 @Component
 public class OutboxPublisher {
@@ -50,7 +73,8 @@ public class OutboxPublisher {
     private static final Logger log = LoggerFactory.getLogger(OutboxPublisher.class);
 
     private static final String SELECT_BATCH_SQL = "SELECT outbox_id, aggregate_id, topic, partition_key, headers, payload "
-            + "FROM core.outbox WHERE published_at IS NULL ORDER BY outbox_id LIMIT ? FOR UPDATE SKIP LOCKED";
+            + "FROM core.outbox WHERE published_at IS NULL AND pg_try_advisory_xact_lock(hashtext(aggregate_id::text)) "
+            + "ORDER BY outbox_id LIMIT ? FOR UPDATE SKIP LOCKED";
 
     private static final String MARK_PUBLISHED_SQL = "UPDATE core.outbox SET published_at = now() WHERE outbox_id = ?";
 
@@ -101,13 +125,32 @@ public class OutboxPublisher {
         transactionTemplate.executeWithoutResult(status -> {
             List<OutboxRow> batch = jdbc.query(SELECT_BATCH_SQL, ROW_MAPPER, batchSize);
 
+            // Fire every send in outbox_id order first, without waiting on
+            // any of them individually -- a synchronous throw from the
+            // producer (e.g. a serialization error) is captured as a failed
+            // future here rather than aborting the rest of the batch, so
+            // firing order for the remaining rows is unaffected by an
+            // earlier row's outcome.
+            List<PendingSend> sends = new ArrayList<>(batch.size());
             for (OutboxRow row : batch) {
                 Instant started = Instant.now();
+                Future<RecordMetadata> future;
                 try {
-                    producer.send(toProducerRecord(row)).get();
-                    jdbc.update(MARK_PUBLISHED_SQL, row.outboxId());
-                    metrics.recordPublished(row.topic(), true);
-                    metrics.recordPublishDuration(Duration.between(started, Instant.now()));
+                    future = producer.send(toProducerRecord(row));
+                } catch (Exception e) {
+                    future = CompletableFuture.failedFuture(e);
+                }
+                sends.add(new PendingSend(row, started, future));
+            }
+
+            // Then block once, in the same order, to learn the outcomes and
+            // mark rows published.
+            for (PendingSend send : sends) {
+                try {
+                    send.future().get();
+                    jdbc.update(MARK_PUBLISHED_SQL, send.row().outboxId());
+                    metrics.recordPublished(send.row().topic(), true);
+                    metrics.recordPublishDuration(Duration.between(send.started(), Instant.now()));
                 } catch (Exception e) {
                     // Leave published_at null and stop here for this cycle:
                     // the remaining rows in this batch (including this one)
@@ -115,8 +158,8 @@ public class OutboxPublisher {
                     // unpublished and eligible for the next cycle. Not
                     // deleted, not moved to a DLQ -- an unpublishable row is
                     // a stuck instruction and should stay visible as one.
-                    metrics.recordPublished(row.topic(), false);
-                    log.warn("Failed to publish outbox row {} to topic {}", row.outboxId(), row.topic(), e);
+                    metrics.recordPublished(send.row().topic(), false);
+                    log.warn("Failed to publish outbox row {} to topic {}", send.row().outboxId(), send.row().topic(), e);
                     break;
                 }
             }
@@ -161,5 +204,8 @@ public class OutboxPublisher {
     }
 
     private record OutboxRow(long outboxId, UUID aggregateId, String topic, String partitionKey, String headersJson, String payload) {
+    }
+
+    private record PendingSend(OutboxRow row, Instant started, Future<RecordMetadata> future) {
     }
 }

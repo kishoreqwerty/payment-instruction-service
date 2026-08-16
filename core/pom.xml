@@ -17,12 +17,18 @@
   <description>Domain core: instruction state machine, domain value types, and database schema</description>
 
   <dependencies>
-    <!-- core stays a plain library: no spring-boot-starter-*. These three
-         are plain Spring Framework (not Boot) and are genuinely needed:
-         OutboxPublisher is a @Component a Boot service picks up via
-         component scan, its DB access is @Transactional, and it polls with
-         plain JdbcTemplate rather than pulling JPA/Hibernate into core just
-         for a handful of hand-written statements. -->
+    <!-- core stays a plain library: no spring-boot-starter-*. These are
+         plain Spring Framework (not Boot) pieces plus the individual
+         auto-configuration/JPA artifacts (not the starters, which pull in
+         a JPA provider, connection pool, etc. that only a hosting service
+         should choose) needed to expose OutboxWriter, OutboxPublisher and
+         InstructionStateWriter as auto-configured beans. See
+         PaymentCoreAutoConfiguration and .notes/reports/PHASE-4-REPORT.md
+         for why instruction-state persistence lives here now instead of in
+         intake-service: processing-service needs byte-identical
+         state-transition semantics against the same tables, and two
+         services hand-copying that logic was worse than core depending on
+         JPA. -->
     <dependency>
       <groupId>org.springframework</groupId>
       <artifactId>spring-context</artifactId>
@@ -34,6 +40,18 @@
     <dependency>
       <groupId>org.springframework</groupId>
       <artifactId>spring-jdbc</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-autoconfigure</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.data</groupId>
+      <artifactId>spring-data-jpa</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>jakarta.persistence</groupId>
+      <artifactId>jakarta.persistence-api</artifactId>
     </dependency>
 
     <dependency>
@@ -70,6 +88,50 @@
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- The JPA provider and Spring's ORM/data-source glue: not needed to
+         compile core's own JPA entities/repositories (those only need
+         jakarta.persistence-api and spring-data-jpa, both compile-scope
+         above), only to actually run PaymentInstructionRepository and
+         InstructionEventRepository against a real database in core's own
+         tests. A hosting Boot service brings its own copy of these via
+         spring-boot-starter-data-jpa. -->
+    <dependency>
+      <groupId>org.hibernate.orm</groupId>
+      <artifactId>hibernate-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-orm</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.zaxxer</groupId>
+      <artifactId>HikariCP</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- Needed only to prove PaymentCoreAutoConfiguration actually works
+         against a real (if minimal) Boot context in core's own tests. See
+         PaymentCoreAutoConfigurationTest. Not a spring-boot-starter, so it
+         doesn't pull in an embedded web server or any other starter's
+         opinions, just @SpringBootTest itself. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-test-autoconfigure</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-test</artifactId>
       <scope>test</scope>
     </dependency>
 

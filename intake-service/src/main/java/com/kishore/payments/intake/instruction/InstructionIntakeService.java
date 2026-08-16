@@ -1,5 +1,6 @@
 package com.kishore.payments.intake.instruction;
 
+import com.kishore.payments.core.instruction.PaymentInstructionEntity;
 import com.kishore.payments.intake.pain001.Pain001MessageParser;
 import com.kishore.payments.intake.pain001.Pain001Validator;
 import com.kishore.payments.intake.pain001.ParsedPain001Instruction;

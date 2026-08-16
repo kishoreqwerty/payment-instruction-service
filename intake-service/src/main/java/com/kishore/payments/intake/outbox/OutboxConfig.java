@@ -10,10 +10,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Supplies the two beans {@code OutboxPublisher} (in core, picked up by
- * component scan) needs but can't construct itself: the Kafka producer and
- * the metrics registrations, both of which depend on this service's own
- * configuration (bootstrap servers, which topics it actually produces to).
+ * Supplies the two beans {@code OutboxPublisher} (in core, wired up by
+ * {@code PaymentCoreAutoConfiguration}) needs but can't construct itself: the
+ * Kafka producer and the metrics registrations, both of which depend on this
+ * service's own configuration (bootstrap servers, which topics it actually
+ * produces to).
  */
 @Configuration
 public class OutboxConfig {

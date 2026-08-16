@@ -1,28 +1,26 @@
-package com.kishore.payments.intake.state;
+package com.kishore.payments.core.state;
 
 import com.kishore.payments.core.domain.ActorType;
-import com.kishore.payments.core.state.InstructionState;
-import com.kishore.payments.core.state.StateMachine;
-import com.kishore.payments.core.state.TransitionContext;
-import com.kishore.payments.core.state.TransitionResult;
-import com.kishore.payments.intake.instruction.InstructionEventEntity;
-import com.kishore.payments.intake.instruction.InstructionEventRepository;
-import com.kishore.payments.intake.instruction.PaymentInstructionEntity;
-import com.kishore.payments.intake.instruction.PaymentInstructionRepository;
+import com.kishore.payments.core.instruction.InstructionEventEntity;
+import com.kishore.payments.core.instruction.InstructionEventRepository;
+import com.kishore.payments.core.instruction.PaymentInstructionEntity;
+import com.kishore.payments.core.instruction.PaymentInstructionRepository;
 import java.time.OffsetDateTime;
 import java.util.NoSuchElementException;
 import java.util.UUID;
 import org.springframework.dao.OptimisticLockingFailureException;
-import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Wires {@link StateMachine} (pure, in core) to persistence: loads the
- * current state and state_version, validates the move, updates
- * payment_instruction under the optimistic lock, and inserts the matching
- * instruction_event -- both writes in one transaction.
+ * Wires {@link StateMachine} (pure) to persistence: loads the current state
+ * and state_version, validates the move, updates payment_instruction under
+ * the optimistic lock, and inserts the matching instruction_event -- both
+ * writes in one transaction. Shared by every service that moves an
+ * instruction through the state machine (intake-service, processing-service)
+ * so the transition semantics -- and in particular what counts as a
+ * {@link ConcurrentTransitionException} -- are identical everywhere rather
+ * than independently reimplemented per service.
  */
-@Component
 public class InstructionStateWriter {
 
     private final PaymentInstructionRepository instructions;

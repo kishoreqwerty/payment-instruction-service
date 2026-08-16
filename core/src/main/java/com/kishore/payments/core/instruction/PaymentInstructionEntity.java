@@ -1,4 +1,4 @@
-package com.kishore.payments.intake.instruction;
+package com.kishore.payments.core.instruction;
 
 import com.kishore.payments.core.state.InstructionState;
 import jakarta.persistence.Column;
@@ -250,6 +250,10 @@ public class PaymentInstructionEntity implements Persistable<UUID> {
         return chargeBearer;
     }
 
+    public void setChargeBearer(String chargeBearer) {
+        this.chargeBearer = chargeBearer;
+    }
+
     public LocalDate getRequestedExecDate() {
         return requestedExecDate;
     }
@@ -258,24 +262,48 @@ public class PaymentInstructionEntity implements Persistable<UUID> {
         return valueDate;
     }
 
+    public void setValueDate(LocalDate valueDate) {
+        this.valueDate = valueDate;
+    }
+
     public LocalDate getSettlementDate() {
         return settlementDate;
+    }
+
+    public void setSettlementDate(LocalDate settlementDate) {
+        this.settlementDate = settlementDate;
     }
 
     public String getSelectedRail() {
         return selectedRail;
     }
 
+    public void setSelectedRail(String selectedRail) {
+        this.selectedRail = selectedRail;
+    }
+
     public String getCorrespondentBic() {
         return correspondentBic;
+    }
+
+    public void setCorrespondentBic(String correspondentBic) {
+        this.correspondentBic = correspondentBic;
     }
 
     public String getNostroAccount() {
         return nostroAccount;
     }
 
+    public void setNostroAccount(String nostroAccount) {
+        this.nostroAccount = nostroAccount;
+    }
+
     public Long getRefdataVersion() {
         return refdataVersion;
+    }
+
+    public void setRefdataVersion(Long refdataVersion) {
+        this.refdataVersion = refdataVersion;
     }
 
     public OffsetDateTime getCreatedAt() {

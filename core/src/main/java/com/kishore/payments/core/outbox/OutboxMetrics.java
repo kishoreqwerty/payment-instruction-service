@@ -25,6 +25,7 @@ public class OutboxMetrics {
     private final Map<String, AtomicLong> pending = new HashMap<>();
     private final Map<String, AtomicLong> oldestPendingSeconds = new HashMap<>();
     private final Timer publishDuration;
+    private final Counter deleted;
 
     public OutboxMetrics(MeterRegistry registry, List<String> knownTopics) {
         for (String topic : knownTopics) {
@@ -51,6 +52,7 @@ public class OutboxMetrics {
         }
 
         this.publishDuration = Timer.builder("payment_outbox_publish_duration_seconds").register(registry);
+        this.deleted = Counter.builder("payment_outbox_deleted_total").register(registry);
     }
 
     public void recordPublished(String topic, boolean success) {
@@ -76,6 +78,10 @@ public class OutboxMetrics {
         if (gauge != null) {
             gauge.set(seconds);
         }
+    }
+
+    public void recordDeleted(long count) {
+        deleted.increment(count);
     }
 
     public void clearPending(String topic) {
