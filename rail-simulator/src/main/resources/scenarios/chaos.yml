@@ -1,0 +1,65 @@
+# Chaos scenario: exercises every AcceptResponse/ConfirmationType combination
+# and all seven matcher types, first-match-wins. Loaded on demand via
+# POST /rail/{railId}/scenario in tests -- never the startup default.
+rail: chaos
+default:
+  acceptResponse: ACCEPT
+  acceptDelayMs: 20
+  confirmation: ACSC
+  confirmationDelayMs: 100
+
+rules:
+  # Large payments are rejected outright for insufficient-funds-equivalent.
+  - match:
+      amountGreaterThan: 1000000
+    acceptResponse: REJECT_SYNC
+    rejectReasonCode: AM04
+
+  # Tiny payments are treated as malformed/below-floor by the rail itself.
+  - match:
+      amountLessThan: 1
+    acceptResponse: REJECT_SYNC
+    rejectReasonCode: AC06
+
+  # Non-USD payments settle but the creditor account turns out closed.
+  - match:
+      currency: EUR
+    acceptResponse: ACCEPT
+    confirmation: RJCT
+    rejectReasonCode: AC04
+
+  # A specific test account is always accepted then returned post-settlement.
+  - match:
+      creditorAccountEndsWith: "9999"
+    acceptResponse: ACCEPT
+    confirmation: ACSP
+
+  # A specific debtor agent is routed through an unresponsive counterparty.
+  - match:
+      debtorAgentBic: CHASUS33XXX
+    acceptResponse: TIMEOUT
+    timeoutHoldMs: 5000
+    recordBeforeTimeout: false
+
+  # Every 20th request hits a rail dispatch timeout where the rail actually
+  # did record the payment before going dark -- the KNOWN side of the
+  # ambiguity in ARCHITECTURE.md section 6.4.
+  - match:
+      everyNth: 20
+    acceptResponse: TIMEOUT
+    timeoutHoldMs: 8000
+    recordBeforeTimeout: true
+
+  # Every 7th request is dropped with no response and no record -- the
+  # UNKNOWN side of the same ambiguity.
+  - match:
+      everyNth: 7
+    acceptResponse: DROP
+    recordBeforeTimeout: false
+
+  # A blanket override for manual testing: force everything through
+  # REJECT_SYNC/BE01 when toggled on by editing this rule's match to always: true.
+  - match:
+      always: false
+    acceptResponse: REJECT_SYNC
+    rejectReasonCode: BE01

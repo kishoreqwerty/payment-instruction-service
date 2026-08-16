@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.kishore.payments</groupId>
+    <artifactId>payment-instruction-service</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>rail-simulator</artifactId>
+  <packaging>jar</packaging>
+
+  <name>rail-simulator</name>
+  <description>Not part of the system under test: a controllable stand-in for Fedwire, SEPA and an ACH-equivalent</description>
+
+  <dependencies>
+    <!-- Deliberately no dependency on core. See .notes/reports/PHASE-5-REPORT.md.
+         This module shares nothing with the payment system but the ISO 20022
+         wire format. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>jakarta.xml.bind</groupId>
+      <artifactId>jakarta.xml.bind-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.glassfish.jaxb</groupId>
+      <artifactId>jaxb-runtime</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+
+    <!-- Scenario files are loaded explicitly at runtime (POST /rail/{railId}/scenario,
+         and this service's own startup), not through Boot's application.yml
+         property-source mechanism, so this needs to be a direct dependency
+         rather than relying on whatever Boot happens to pull in transitively. -->
+    <dependency>
+      <groupId>org.yaml</groupId>
+      <artifactId>snakeyaml</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <!-- Spring MVC resolves @PathVariable("railId")-less parameters
+               (and Spring's constructor-injection resolves same-type beans)
+               by matching the compiled parameter name against the bean/path
+               name; without -parameters, javac erases those names and both
+               break at runtime. -->
+          <parameters>true</parameters>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <goals>
+              <goal>repackage</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- Three separate xjc executions, one per schema, each into its own
+           sub-package, not the single com.kishore.payments.railsim.iso20022.generated
+           package used elsewhere in this repo for a lone schema. pacs.008,
+           pacs.002 and pacs.004 each independently declare a root "Document"
+           element in their own namespace; compiled together into one
+           package, JAXB tries to generate one shared ObjectFactory with a
+           createDocument(...) method for all three and fails with an
+           unresolvable name collision. See .notes/reports/PHASE-5-REPORT.md. -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>jaxb2-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>xjc-pacs008</id>
+            <goals>
+              <goal>xjc</goal>
+            </goals>
+            <configuration>
+              <sources>
+                <source>src/main/resources/xsd/pacs.008.001.08.xsd</source>
+              </sources>
+              <packageName>com.kishore.payments.railsim.iso20022.generated.pacs008</packageName>
+            </configuration>
+          </execution>
+          <execution>
+            <id>xjc-pacs002</id>
+            <goals>
+              <goal>xjc</goal>
+            </goals>
+            <configuration>
+              <sources>
+                <source>src/main/resources/xsd/pacs.002.001.10.xsd</source>
+              </sources>
+              <packageName>com.kishore.payments.railsim.iso20022.generated.pacs002</packageName>
+            </configuration>
+          </execution>
+          <execution>
+            <id>xjc-pacs004</id>
+            <goals>
+              <goal>xjc</goal>
+            </goals>
+            <configuration>
+              <sources>
+                <source>src/main/resources/xsd/pacs.004.001.09.xsd</source>
+              </sources>
+              <packageName>com.kishore.payments.railsim.iso20022.generated.pacs004</packageName>
+            </configuration>
+          </execution>
+        </executions>
+        <configuration>
+          <clearOutputDir>false</clearOutputDir>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+</project>

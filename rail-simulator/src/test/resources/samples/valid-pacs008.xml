@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08">
+    <FIToFICstmrCdtTrf>
+        <GrpHdr>
+            <MsgId>MSGID-0001</MsgId>
+            <CreDtTm>2026-08-15T10:00:00Z</CreDtTm>
+            <NbOfTxs>1</NbOfTxs>
+            <SttlmInf>
+                <SttlmMtd>CLRG</SttlmMtd>
+            </SttlmInf>
+        </GrpHdr>
+        <CdtTrfTxInf>
+            <PmtId>
+                <InstrId>INSTR-0001</InstrId>
+                <EndToEndId>E2E-0001</EndToEndId>
+                <TxId>TX-0001</TxId>
+                <UETR>8a562c67-ca16-48ba-b074-65581be6f001</UETR>
+            </PmtId>
+            <IntrBkSttlmAmt Ccy="USD">1000.00</IntrBkSttlmAmt>
+            <ChrgBr>SHAR</ChrgBr>
+            <Dbtr>
+                <Nm>Alice Debtor</Nm>
+            </Dbtr>
+            <DbtrAcct>
+                <Id>
+                    <Othr>
+                        <Id>DBTRACCT0001</Id>
+                    </Othr>
+                </Id>
+            </DbtrAcct>
+            <DbtrAgt>
+                <FinInstnId>
+                    <BICFI>CHASUS33XXX</BICFI>
+                </FinInstnId>
+            </DbtrAgt>
+            <CdtrAgt>
+                <FinInstnId>
+                    <BICFI>DEUTDEFFXXX</BICFI>
+                </FinInstnId>
+            </CdtrAgt>
+            <Cdtr>
+                <Nm>Bob Creditor</Nm>
+            </Cdtr>
+            <CdtrAcct>
+                <Id>
+                    <Othr>
+                        <Id>CDTRACCT0001</Id>
+                    </Othr>
+                </Id>
+            </CdtrAcct>
+        </CdtTrfTxInf>
+    </FIToFICstmrCdtTrf>
+</Document>

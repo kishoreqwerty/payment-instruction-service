@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08">
+    <FIToFICstmrCdtTrf>
+        <GrpHdr>
+            <MsgId>MSGID-0002</MsgId>
+            <CreDtTm>2026-08-15T10:00:00Z</CreDtTm>
+            <NbOfTxs>1</NbOfTxs>
+            <SttlmInf>
+                <SttlmMtd>CLRG</SttlmMtd>
+            </SttlmInf>
+        </GrpHdr>
+        <CdtTrfTxInf>
+            <PmtId>
+                <EndToEndId>E2E-0002</EndToEndId>
+                <UETR>8a562c67-ca16-48ba-b074-65581be6f002</UETR>
+            </PmtId>
+            <!-- IntrBkSttlmAmt is required by the schema and deliberately omitted here -->
+            <ChrgBr>SHAR</ChrgBr>
+            <Dbtr>
+                <Nm>Alice Debtor</Nm>
+            </Dbtr>
+            <DbtrAgt>
+                <FinInstnId>
+                    <BICFI>CHASUS33XXX</BICFI>
+                </FinInstnId>
+            </DbtrAgt>
+            <CdtrAgt>
+                <FinInstnId>
+                    <BICFI>DEUTDEFFXXX</BICFI>
+                </FinInstnId>
+            </CdtrAgt>
+            <Cdtr>
+                <Nm>Bob Creditor</Nm>
+            </Cdtr>
+            <CdtrAcct>
+                <Id>
+                    <Othr>
+                        <Id>CDTRACCT0002</Id>
+                    </Othr>
+                </Id>
+            </CdtrAcct>
+        </CdtTrfTxInf>
+    </FIToFICstmrCdtTrf>
+</Document>

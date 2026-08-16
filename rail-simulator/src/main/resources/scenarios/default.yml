@@ -1,0 +1,10 @@
+# Baseline scenario: every payment is accepted quickly and confirms ACSC
+# shortly after. No rules -- nothing ever varies from the default block.
+# This is what RailStateRegistry seeds all three rails with at startup.
+rail: default
+default:
+  acceptResponse: ACCEPT
+  acceptDelayMs: 50
+  confirmation: ACSC
+  confirmationDelayMs: 200
+rules: []

@@ -16,6 +16,7 @@
     <module>core</module>
     <module>intake-service</module>
     <module>processing-service</module>
+    <module>rail-simulator</module>
   </modules>
 
   <properties>

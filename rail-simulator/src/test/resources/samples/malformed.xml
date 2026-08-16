@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08">
+    <FIToFICstmrCdtTrf>
+        <GrpHdr>
+            <MsgId>MSGID-0001</MsgId>
+        <!-- unclosed GrpHdr, unclosed FIToFICstmrCdtTrf: not well-formed XML -->
