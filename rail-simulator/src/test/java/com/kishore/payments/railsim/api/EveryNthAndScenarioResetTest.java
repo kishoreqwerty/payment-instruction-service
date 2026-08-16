@@ -35,7 +35,7 @@ class EveryNthAndScenarioResetTest extends AbstractRailSimulatorTest {
                   acceptDelayMs: 0
                   confirmation: ACSC
                   confirmationDelayMs: 20
-                callbackUrl: "%s"
+                statusCallbackUrl: "%s"
                 rules:
                   - match:
                       everyNth: 3
@@ -67,7 +67,7 @@ class EveryNthAndScenarioResetTest extends AbstractRailSimulatorTest {
                   acceptDelayMs: 0
                   confirmation: NONE
                   confirmationDelayMs: 0
-                callbackUrl: "%s"
+                statusCallbackUrl: "%s"
                 rules:
                   - match:
                       everyNth: 3

@@ -15,7 +15,10 @@ public record BehaviorSpec(
         Long confirmationDelayMs,
         String rejectReasonCode,
         Long timeoutHoldMs,
-        Boolean recordBeforeTimeout) {
+        Boolean recordBeforeTimeout,
+        Integer errorCount,
+        Long returnDelayMs,
+        String returnReasonCode) {
 
     public BehaviorSpec mergeOnto(BehaviorSpec fallback) {
         return new BehaviorSpec(
@@ -25,6 +28,9 @@ public record BehaviorSpec(
                 confirmationDelayMs != null ? confirmationDelayMs : fallback.confirmationDelayMs(),
                 rejectReasonCode != null ? rejectReasonCode : fallback.rejectReasonCode(),
                 timeoutHoldMs != null ? timeoutHoldMs : fallback.timeoutHoldMs(),
-                recordBeforeTimeout != null ? recordBeforeTimeout : fallback.recordBeforeTimeout());
+                recordBeforeTimeout != null ? recordBeforeTimeout : fallback.recordBeforeTimeout(),
+                errorCount != null ? errorCount : fallback.errorCount(),
+                returnDelayMs != null ? returnDelayMs : fallback.returnDelayMs(),
+                returnReasonCode != null ? returnReasonCode : fallback.returnReasonCode());
     }
 }

@@ -81,6 +81,20 @@
             <goals>
               <goal>repackage</goal>
             </goals>
+            <configuration>
+              <!-- Without a classifier, repackage overwrites the plain jar
+                   with the executable BOOT-INF/classes/... layout, which
+                   settlement-gateway (a test-scope dependency on this
+                   module, see .notes/reports/PHASE-6-REPORT.md) cannot
+                   compile against, failing with "package does not exist" during a full
+                   mvn clean verify, even though the same build passes under
+                   -pl/-am because those never run this module's package
+                   phase. The classifier keeps the plain jar as the default
+                   artifact and puts the runnable one at a separate
+                   coordinate; mvn spring-boot:run is unaffected, since it
+                   runs from compiled classes, not the packaged jar. -->
+              <classifier>exec</classifier>
+            </configuration>
           </execution>
         </executions>
       </plugin>

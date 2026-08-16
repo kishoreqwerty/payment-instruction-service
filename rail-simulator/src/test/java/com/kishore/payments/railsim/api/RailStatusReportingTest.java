@@ -94,7 +94,7 @@ class RailStatusReportingTest extends AbstractRailSimulatorTest {
                   confirmation: %s
                   confirmationDelayMs: 20
                   rejectReasonCode: %s
-                callbackUrl: "%s"
+                statusCallbackUrl: "%s"
                 rules: []
                 """.formatted(confirmation, rejectReasonCode, callbackServer.url()));
         Fixtures.Pacs008Fixture fixture = Fixtures.validPayment();

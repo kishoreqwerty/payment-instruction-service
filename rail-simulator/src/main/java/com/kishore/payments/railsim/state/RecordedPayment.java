@@ -10,14 +10,22 @@ import java.time.Instant;
  * not a mutation, and thread-safety comes from the map itself. {@code
  * railStatus} starts null (accepted for processing, disposition not yet
  * decided) and is set once a confirmation is generated.
+ *
+ * <p>{@code rawPayload} is the exact bytes of the pacs.008 as received,
+ * kept alongside the parsed {@link InboundPayment} rather than instead of
+ * it, for the same reason {@code core.dispatch_record.request_payload}
+ * exists on the settlement-gateway side: what a client claims it sent and
+ * what this rail actually received can only be compared byte-for-byte with
+ * the original bytes on hand, not with whatever a re-serialization of the
+ * parsed fields would produce.
  */
-public record RecordedPayment(InboundPayment payment, Instant receivedAt, String railStatus) {
+public record RecordedPayment(InboundPayment payment, Instant receivedAt, String railStatus, byte[] rawPayload) {
 
-    public RecordedPayment(InboundPayment payment, Instant receivedAt) {
-        this(payment, receivedAt, null);
+    public RecordedPayment(InboundPayment payment, Instant receivedAt, byte[] rawPayload) {
+        this(payment, receivedAt, null, rawPayload);
     }
 
     public RecordedPayment withRailStatus(String railStatus) {
-        return new RecordedPayment(payment, receivedAt, railStatus);
+        return new RecordedPayment(payment, receivedAt, railStatus, rawPayload);
     }
 }

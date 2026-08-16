@@ -17,6 +17,7 @@
     <module>intake-service</module>
     <module>processing-service</module>
     <module>rail-simulator</module>
+    <module>settlement-gateway</module>
   </modules>
 
   <properties>

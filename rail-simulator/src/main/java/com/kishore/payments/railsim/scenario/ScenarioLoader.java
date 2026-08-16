@@ -46,8 +46,9 @@ public class ScenarioLoader {
             }
         }
 
-        String callbackUrl = root.get("callbackUrl") instanceof String s ? s : null;
-        return new ScenarioConfig(rail, defaults, rules, callbackUrl);
+        String statusCallbackUrl = root.get("statusCallbackUrl") instanceof String s ? s : null;
+        String returnCallbackUrl = root.get("returnCallbackUrl") instanceof String s ? s : null;
+        return new ScenarioConfig(rail, defaults, rules, statusCallbackUrl, returnCallbackUrl);
     }
 
     private static void requireFullyPopulated(BehaviorSpec defaults, String rail) {
@@ -70,7 +71,10 @@ public class ScenarioLoader {
                 toLong(map.get("confirmationDelayMs")),
                 map.get("rejectReasonCode") instanceof String s ? s : null,
                 toLong(map.get("timeoutHoldMs")),
-                map.get("recordBeforeTimeout") instanceof Boolean b ? b : null);
+                map.get("recordBeforeTimeout") instanceof Boolean b ? b : null,
+                toInteger(map.get("errorCount")),
+                toLong(map.get("returnDelayMs")),
+                map.get("returnReasonCode") instanceof String s ? s : null);
     }
 
     private static MatchCriteria matchCriteria(Map<String, Object> map) {

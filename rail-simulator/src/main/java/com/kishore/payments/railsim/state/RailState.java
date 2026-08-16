@@ -8,6 +8,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -25,6 +26,7 @@ public class RailState {
     private final AtomicLong requestOrdinal = new AtomicLong(0);
     private final Map<String, RecordedPayment> recorded = new ConcurrentHashMap<>();
     private final Set<ScheduledFuture<?>> pendingCallbacks = new CopyOnWriteArraySet<>();
+    private final Map<String, AtomicInteger> errorAttempts = new ConcurrentHashMap<>();
 
     public RailState(RailId railId, ScenarioConfig initialScenario) {
         this.railId = railId;
@@ -52,6 +54,7 @@ public class RailState {
             callback.cancel(false);
         }
         pendingCallbacks.clear();
+        errorAttempts.clear();
     }
 
     /** The 1-based ordinal of the request that just arrived, for everyNth matching. */
@@ -61,6 +64,11 @@ public class RailState {
 
     public void record(RecordedPayment payment) {
         recorded.put(payment.payment().uetr(), payment);
+    }
+
+    /** The 1-based count of ERROR_5XX attempts recorded so far for this UETR, after incrementing for the current one. */
+    public int nextErrorAttempt(String uetr) {
+        return errorAttempts.computeIfAbsent(uetr, id -> new AtomicInteger(0)).incrementAndGet();
     }
 
     public void updateStatus(String uetr, String railStatus) {

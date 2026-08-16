@@ -6,9 +6,10 @@ spring:
     name: rail-simulator
 
 railsim:
-  # Used only when a scenario's own callbackUrl is absent -- see
-  # ScenarioConfig.callbackUrl() and RailController. Points nowhere real;
-  # every scenario used in anger should set its own callbackUrl explicitly.
+  # Used only when a scenario sets neither statusCallbackUrl nor
+  # returnCallbackUrl -- see ScenarioConfig and RailController. Points
+  # nowhere real; every scenario used in anger should set its own
+  # callback URL(s) explicitly.
   default-callback-url: http://localhost:8086/rail-callbacks
 
 management:

@@ -7,4 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface PaymentInstructionRepository extends JpaRepository<PaymentInstructionEntity, UUID> {
 
     Optional<PaymentInstructionEntity> findByDebtorAccountAndEndToEndId(String debtorAccount, String endToEndId);
+
+    Optional<PaymentInstructionEntity> findByUetr(UUID uetr);
 }

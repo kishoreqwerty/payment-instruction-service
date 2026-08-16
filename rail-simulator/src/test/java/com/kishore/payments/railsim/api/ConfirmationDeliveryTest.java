@@ -34,7 +34,7 @@ class ConfirmationDeliveryTest extends AbstractRailSimulatorTest {
                   acceptDelayMs: 0
                   confirmation: ACSC
                   confirmationDelayMs: 100
-                callbackUrl: "%s"
+                statusCallbackUrl: "%s"
                 rules: []
                 """.formatted(callbackServer.url()));
 
@@ -58,7 +58,7 @@ class ConfirmationDeliveryTest extends AbstractRailSimulatorTest {
                   confirmation: RJCT
                   confirmationDelayMs: 100
                   rejectReasonCode: AC04
-                callbackUrl: "%s"
+                statusCallbackUrl: "%s"
                 rules: []
                 """.formatted(callbackServer.url()));
 

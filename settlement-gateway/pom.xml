@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.kishore.payments</groupId>
+    <artifactId>payment-instruction-service</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>settlement-gateway</artifactId>
+  <packaging>jar</packaging>
+
+  <name>settlement-gateway</name>
+  <description>Dispatches a ROUTED instruction as pacs.008 and correlates the rail's pacs.002/pacs.004 response back to it</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.kishore.payments</groupId>
+      <artifactId>core</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+
+    <!-- Web layer only for the inbound callback endpoints (POST
+         /callbacks/rail/{railId}/status and /return) and the RestTemplate
+         RailDispatcher uses to call out to the rail. This service has no
+         other REST API. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-jpa</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.kafka</groupId>
+      <artifactId>spring-kafka</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+
+    <!-- ISO 20022: the gateway produces pacs.008 and consumes pacs.002/pacs.004.
+         XSDs are copied from rail-simulator, not shared via a module. See
+         .notes/reports/PHASE-6-REPORT.md. Same three-package xjc split as
+         rail-simulator, for the same reason (§2 of that report): each schema
+         declares its own root Document element in its own namespace. -->
+    <dependency>
+      <groupId>jakarta.xml.bind</groupId>
+      <artifactId>jakarta.xml.bind-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.glassfish.jaxb</groupId>
+      <artifactId>jaxb-runtime</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.kafka</groupId>
+      <artifactId>spring-kafka-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>redpanda</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- Test-scope only: integration tests need a real running rail-simulator
+         to dispatch against (§8 of the phase brief). Booting its Spring
+         context in-process, on its own port, in the same JVM as this
+         module's tests is far simpler than a Docker image + Testcontainers
+         GenericContainer for it, and rail-simulator's own isolation design
+         (no dependency on core, no shared domain types) is exactly what
+         makes embedding it this way safe: it cannot see or touch this
+         service's Spring context. -->
+    <dependency>
+      <groupId>com.kishore.payments</groupId>
+      <artifactId>rail-simulator</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <!-- See rail-simulator/pom.xml and .notes/reports/PHASE-5-REPORT.md
+               section 4: without this, Spring's by-name bean-resolution
+               fallback and @PathVariable name resolution both break, since
+               javac otherwise erases parameter names. This module has the
+               same multi-bean-of-one-type shape (three Schema, three
+               JAXBContext beans) that first exposed the problem. -->
+          <parameters>true</parameters>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <goals>
+              <goal>repackage</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>jaxb2-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>xjc-pacs008</id>
+            <goals>
+              <goal>xjc</goal>
+            </goals>
+            <configuration>
+              <sources>
+                <source>src/main/resources/xsd/pacs.008.001.08.xsd</source>
+              </sources>
+              <packageName>com.kishore.payments.gateway.iso20022.generated.pacs008</packageName>
+            </configuration>
+          </execution>
+          <execution>
+            <id>xjc-pacs002</id>
+            <goals>
+              <goal>xjc</goal>
+            </goals>
+            <configuration>
+              <sources>
+                <source>src/main/resources/xsd/pacs.002.001.10.xsd</source>
+              </sources>
+              <packageName>com.kishore.payments.gateway.iso20022.generated.pacs002</packageName>
+            </configuration>
+          </execution>
+          <execution>
+            <id>xjc-pacs004</id>
+            <goals>
+              <goal>xjc</goal>
+            </goals>
+            <configuration>
+              <sources>
+                <source>src/main/resources/xsd/pacs.004.001.09.xsd</source>
+              </sources>
+              <packageName>com.kishore.payments.gateway.iso20022.generated.pacs004</packageName>
+            </configuration>
+          </execution>
+        </executions>
+        <configuration>
+          <clearOutputDir>false</clearOutputDir>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+</project>

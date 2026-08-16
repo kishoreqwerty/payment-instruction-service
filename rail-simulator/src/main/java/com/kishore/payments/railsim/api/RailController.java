@@ -89,17 +89,20 @@ public class RailController {
         long requestOrdinal = railState.nextRequestOrdinal();
         ScenarioConfig scenario = railState.scenario();
         BehaviorSpec behavior = scenario.resolve(payment, requestOrdinal);
-        String callbackUrl = scenario.callbackUrl() != null ? scenario.callbackUrl() : defaultCallbackUrl;
+        String statusCallbackUrl = scenario.statusCallbackUrl() != null ? scenario.statusCallbackUrl() : defaultCallbackUrl;
+        String returnCallbackUrl = scenario.returnCallbackUrl() != null ? scenario.returnCallbackUrl() : defaultCallbackUrl;
 
-        dispatch(railState, payment, behavior, callbackUrl, request, deferred);
+        dispatch(railState, payment, body, behavior, statusCallbackUrl, returnCallbackUrl, request, deferred);
         return deferred;
     }
 
     private void dispatch(
             RailState railState,
             InboundPayment payment,
+            byte[] rawPayload,
             BehaviorSpec behavior,
-            String callbackUrl,
+            String statusCallbackUrl,
+            String returnCallbackUrl,
             HttpServletRequest request,
             DeferredResult<ResponseEntity<?>> deferred) {
         AcceptResponse acceptResponse = behavior.acceptResponse();
@@ -108,7 +111,7 @@ public class RailController {
         switch (acceptResponse) {
             case DROP -> {
                 if (Boolean.TRUE.equals(behavior.recordBeforeTimeout())) {
-                    railState.record(new RecordedPayment(payment, Instant.now()));
+                    railState.record(new RecordedPayment(payment, Instant.now(), rawPayload));
                 }
                 connectionDropper.drop(request);
                 // If drop() returns normally, the connection is already
@@ -124,9 +127,30 @@ public class RailController {
             }
             case ACCEPT, REJECT_SYNC -> scheduler.schedule(
                     () -> {
-                        railState.record(new RecordedPayment(payment, Instant.now()));
-                        scheduleConfirmationIfConfigured(railState, payment, behavior, acceptResponse, callbackUrl, 0);
+                        railState.record(new RecordedPayment(payment, Instant.now(), rawPayload));
+                        scheduleConfirmationIfConfigured(railState, payment, behavior, acceptResponse, statusCallbackUrl, returnCallbackUrl, 0);
                         deferred.setResult(ResponseEntity.status(HttpStatus.ACCEPTED).build());
+                    },
+                    acceptDelayMs,
+                    TimeUnit.MILLISECONDS);
+            case REJECT_4XX -> scheduler.schedule(
+                    () -> deferred.setResult(ResponseEntity.badRequest().body(new ErrorResponse(
+                            "REJECTED", behavior.rejectReasonCode() != null ? behavior.rejectReasonCode() : "Rejected by rail"))),
+                    acceptDelayMs,
+                    TimeUnit.MILLISECONDS);
+            case ERROR_5XX -> scheduler.schedule(
+                    () -> {
+                        int attempt = railState.nextErrorAttempt(payment.uetr());
+                        Integer errorCount = behavior.errorCount();
+                        boolean stillErroring = errorCount == null || attempt <= errorCount;
+                        if (stillErroring) {
+                            deferred.setResult(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                                    .body(new ErrorResponse("SERVER_ERROR", "Rail server error on attempt " + attempt)));
+                        } else {
+                            railState.record(new RecordedPayment(payment, Instant.now(), rawPayload));
+                            scheduleConfirmationIfConfigured(railState, payment, behavior, acceptResponse, statusCallbackUrl, returnCallbackUrl, 0);
+                            deferred.setResult(ResponseEntity.status(HttpStatus.ACCEPTED).build());
+                        }
                     },
                     acceptDelayMs,
                     TimeUnit.MILLISECONDS);
@@ -134,12 +158,12 @@ public class RailController {
                 long timeoutHoldMs = behavior.timeoutHoldMs() != null ? behavior.timeoutHoldMs() : 0;
                 boolean recordBeforeTimeout = Boolean.TRUE.equals(behavior.recordBeforeTimeout());
                 if (recordBeforeTimeout) {
-                    railState.record(new RecordedPayment(payment, Instant.now()));
+                    railState.record(new RecordedPayment(payment, Instant.now(), rawPayload));
                 }
                 scheduler.schedule(
                         () -> {
                             if (!recordBeforeTimeout) {
-                                railState.record(new RecordedPayment(payment, Instant.now()));
+                                railState.record(new RecordedPayment(payment, Instant.now(), rawPayload));
                             }
                             // Confirmation timing is relative to when the
                             // rail actually finished deciding to accept --
@@ -147,7 +171,7 @@ public class RailController {
                             // -- since that is when acceptance conceptually
                             // happens for a payment that timed out on the
                             // client.
-                            scheduleConfirmationIfConfigured(railState, payment, behavior, acceptResponse, callbackUrl, 0);
+                            scheduleConfirmationIfConfigured(railState, payment, behavior, acceptResponse, statusCallbackUrl, returnCallbackUrl, 0);
                             deferred.setResult(ResponseEntity.status(HttpStatus.ACCEPTED).build());
                         },
                         timeoutHoldMs,
@@ -161,13 +185,30 @@ public class RailController {
             InboundPayment payment,
             BehaviorSpec behavior,
             AcceptResponse acceptResponse,
-            String callbackUrl,
+            String statusCallbackUrl,
+            String returnCallbackUrl,
             long extraDelayMs) {
         ConfirmationType confirmation = acceptResponse == AcceptResponse.REJECT_SYNC ? ConfirmationType.RJCT : behavior.confirmation();
         if (confirmation == null || confirmation == ConfirmationType.NONE) {
             return;
         }
         long confirmationDelayMs = (behavior.confirmationDelayMs() != null ? behavior.confirmationDelayMs() : 0) + extraDelayMs;
+
+        if (confirmation == ConfirmationType.RETURN_AFTER_SETTLEMENT) {
+            // Settles first (ACSC) to statusCallbackUrl, then unwinds (pacs.004)
+            // to returnCallbackUrl -- different message types, different
+            // endpoints, exactly like a real rail. The pacs.004's delay is
+            // additional to, not instead of, the ACSC's own delay, so the
+            // return always arrives after settlement, never before or
+            // instead of it.
+            callbackSender.scheduleConfirmation(
+                    payment, ConfirmationType.ACSC.name(), null, confirmationDelayMs, statusCallbackUrl,
+                    status -> railState.updateStatus(payment.uetr(), status));
+            long returnDelayMs = confirmationDelayMs + (behavior.returnDelayMs() != null ? behavior.returnDelayMs() : 0);
+            callbackSender.scheduleReturn(payment, behavior.returnReasonCode(), returnDelayMs, returnCallbackUrl);
+            return;
+        }
+
         String rejectReasonCode = confirmation == ConfirmationType.RJCT ? behavior.rejectReasonCode() : null;
         // railState.updateStatus fires the moment the rail decides the
         // outcome, not gated on the callback POST actually landing -- GET
@@ -178,7 +219,7 @@ public class RailController {
                 confirmation.name(),
                 rejectReasonCode,
                 confirmationDelayMs,
-                callbackUrl,
+                statusCallbackUrl,
                 status -> railState.updateStatus(payment.uetr(), status));
     }
 
@@ -216,6 +257,27 @@ public class RailController {
                         r.payment().creditorAccount()))
                 .toList();
         return ResponseEntity.ok(summaries);
+    }
+
+    /**
+     * Test-only: the exact bytes this rail received for one UETR, kept
+     * separate from {@link #received} rather than inlined there so the
+     * common-case summary stays small -- a full pacs.008 body for every
+     * recorded payment on every {@code GET /received} call would be
+     * needless weight for tests that only care about the summary fields.
+     * Exists specifically so a byte-for-byte fidelity check (a client's
+     * "what I stored" against this rail's "what I actually received") is
+     * possible without the client having to also be the one capturing the
+     * wire bytes -- see .notes/reports/PHASE-6-REPORT.md §6.
+     */
+    @GetMapping("/received/{uetr}/raw")
+    public ResponseEntity<byte[]> receivedRaw(@PathVariable String railId, @PathVariable String uetr) {
+        RailState railState = railStateRegistry.get(parseRailId(railId));
+        RecordedPayment recorded = railState.find(uetr);
+        if (recorded == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok().contentType(MediaType.APPLICATION_XML).body(recorded.rawPayload());
     }
 
     private static RailId parseRailId(String railId) {
