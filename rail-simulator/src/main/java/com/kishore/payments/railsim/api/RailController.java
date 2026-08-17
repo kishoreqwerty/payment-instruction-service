@@ -87,8 +87,9 @@ public class RailController {
 
         InboundPayment payment = pacs008Parser.parse(body);
         long requestOrdinal = railState.nextRequestOrdinal();
+        int deliveryAttempt = railState.nextDeliveryAttempt(payment.uetr());
         ScenarioConfig scenario = railState.scenario();
-        BehaviorSpec behavior = scenario.resolve(payment, requestOrdinal);
+        BehaviorSpec behavior = scenario.resolve(payment, requestOrdinal, deliveryAttempt);
         String statusCallbackUrl = scenario.statusCallbackUrl() != null ? scenario.statusCallbackUrl() : defaultCallbackUrl;
         String returnCallbackUrl = scenario.returnCallbackUrl() != null ? scenario.returnCallbackUrl() : defaultCallbackUrl;
 
@@ -110,8 +111,19 @@ public class RailController {
 
         switch (acceptResponse) {
             case DROP -> {
-                if (Boolean.TRUE.equals(behavior.recordBeforeTimeout())) {
+                boolean recordBeforeTimeout = Boolean.TRUE.equals(behavior.recordBeforeTimeout());
+                if (recordBeforeTimeout) {
                     railState.record(new RecordedPayment(payment, Instant.now(), rawPayload));
+                    // Unlike a payment the rail never accepted at all
+                    // (recordBeforeTimeout: false, nothing to confirm,
+                    // regardless of what `confirmation` says), one recorded
+                    // before the connection reset genuinely was received --
+                    // only the response back to the client was lost, not the
+                    // request. That is exactly the "response lost, not the
+                    // request" world .notes/ARCHITECTURE.md §6.4 describes,
+                    // and a real rail in that world can still confirm later,
+                    // out of band. Scheduled the same way ACCEPT/TIMEOUT do.
+                    scheduleConfirmationIfConfigured(railState, payment, behavior, acceptResponse, statusCallbackUrl, returnCallbackUrl, 0);
                 }
                 connectionDropper.drop(request);
                 // If drop() returns normally, the connection is already
@@ -120,10 +132,7 @@ public class RailController {
                 // If drop() cannot perform the drop, it throws, and that
                 // propagates as a normal synchronous 500 (the request
                 // hasn't returned yet) rather than silently succeeding into
-                // a scenario that looks like TIMEOUT. Not scheduling a
-                // confirmation on a successful drop, either -- a payment
-                // the rail never accepted has nothing to confirm,
-                // regardless of what `confirmation` says.
+                // a scenario that looks like TIMEOUT.
             }
             case ACCEPT, REJECT_SYNC -> scheduler.schedule(
                     () -> {
@@ -203,7 +212,7 @@ public class RailController {
             // instead of it.
             callbackSender.scheduleConfirmation(
                     payment, ConfirmationType.ACSC.name(), null, confirmationDelayMs, statusCallbackUrl,
-                    status -> railState.updateStatus(payment.uetr(), status));
+                    (status, reasonCode) -> railState.updateStatus(payment.uetr(), status, reasonCode));
             long returnDelayMs = confirmationDelayMs + (behavior.returnDelayMs() != null ? behavior.returnDelayMs() : 0);
             callbackSender.scheduleReturn(payment, behavior.returnReasonCode(), returnDelayMs, returnCallbackUrl);
             return;
@@ -220,18 +229,62 @@ public class RailController {
                 rejectReasonCode,
                 confirmationDelayMs,
                 statusCallbackUrl,
-                status -> railState.updateStatus(payment.uetr(), status));
+                (status, reasonCode) -> railState.updateStatus(payment.uetr(), status, reasonCode));
     }
 
+    /**
+     * Reconciliation queries are a second, independent interaction with the
+     * rail (see {@link StatusQueryBehaviour}), so this branches on the
+     * scenario's {@code statusQueryBehaviour} before falling through to the
+     * same lookup {@link #NORMAL} always used. {@code ALWAYS_ERROR} answers
+     * as if the rail's status endpoint were down; {@code SLOW} answers
+     * truthfully but only after a configured delay, modeling a rail whose
+     * query path is merely slow rather than broken; {@code
+     * UNKNOWN_THEN_KNOWN} answers UNKNOWN for a configured number of leading
+     * queries regardless of what is actually on file, then truthfully --
+     * this is what lets a test prove a resolver requires more than one
+     * UNKNOWN observation before acting.
+     */
     @GetMapping("/payments/{uetr}")
     public ResponseEntity<PaymentStatusResponse> getPayment(@PathVariable String railId, @PathVariable String uetr) {
         RailState railState = railStateRegistry.get(parseRailId(railId));
+        ScenarioConfig scenario = railState.scenario();
+
+        switch (scenario.statusQueryBehaviour()) {
+            case ALWAYS_ERROR -> {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body(new PaymentStatusResponse(uetr, "ERROR", null, null, null));
+            }
+            case SLOW -> sleep(scenario.resolvedStatusQuerySlowDelayMs());
+            case UNKNOWN_THEN_KNOWN -> {
+                int attempt = railState.nextStatusQueryAttempt(uetr);
+                if (attempt <= scenario.resolvedStatusQueryUnknownCount()) {
+                    return ResponseEntity.ok(new PaymentStatusResponse(uetr, "UNKNOWN", null, null, null));
+                }
+            }
+            case NORMAL -> {
+                // fall through to the lookup below
+            }
+        }
+
         RecordedPayment recorded = railState.find(uetr);
         if (recorded == null) {
-            return ResponseEntity.ok(new PaymentStatusResponse(uetr, "UNKNOWN", null, null));
+            return ResponseEntity.ok(new PaymentStatusResponse(uetr, "UNKNOWN", null, null, null));
         }
         return ResponseEntity.ok(new PaymentStatusResponse(
-                uetr, "KNOWN", recorded.railStatus(), DateTimeFormatter.ISO_INSTANT.format(recorded.receivedAt())));
+                uetr, "KNOWN", recorded.railStatus(), recorded.railReasonCode(), DateTimeFormatter.ISO_INSTANT.format(recorded.receivedAt())));
+    }
+
+    private static void sleep(long millis) {
+        if (millis <= 0) {
+            return;
+        }
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(e);
+        }
     }
 
     /** Test-only: loads a new scenario for this rail and resets its counters, recorded payments and pending callbacks. */
@@ -257,6 +310,26 @@ public class RailController {
                         r.payment().creditorAccount()))
                 .toList();
         return ResponseEntity.ok(summaries);
+    }
+
+    /**
+     * Test-only: one UETR's receipt summary, including how many times it
+     * was received beyond the first -- see {@link RailState#record} for why
+     * a later receipt of an already-known UETR is counted as a duplicate
+     * rather than overwriting the first. This is what a test uses to prove
+     * a redispatch's original delivery, arriving late, was recognised as a
+     * duplicate rather than processed as a second, distinct payment.
+     */
+    @GetMapping("/received/{uetr}")
+    public ResponseEntity<ReceivedSummary> receivedOne(@PathVariable String railId, @PathVariable String uetr) {
+        RailState railState = railStateRegistry.get(parseRailId(railId));
+        RecordedPayment recorded = railState.find(uetr);
+        int duplicateCount = railState.duplicateReceiptCount(uetr);
+        if (recorded == null) {
+            return ResponseEntity.ok(new ReceivedSummary(uetr, false, 0, null));
+        }
+        return ResponseEntity.ok(new ReceivedSummary(
+                uetr, true, duplicateCount, DateTimeFormatter.ISO_INSTANT.format(recorded.receivedAt())));
     }
 
     /**
@@ -288,11 +361,14 @@ public class RailController {
         }
     }
 
-    public record PaymentStatusResponse(String uetr, String status, String railStatus, String receivedAt) {
+    public record PaymentStatusResponse(String uetr, String status, String railStatus, String railReasonCode, String receivedAt) {
     }
 
     public record RecordedPaymentSummary(
             String uetr, String receivedAt, String railStatus, java.math.BigDecimal amount, String currency, String creditorAccount) {
+    }
+
+    public record ReceivedSummary(String uetr, boolean received, int duplicateCount, String receivedAt) {
     }
 
     public record ErrorResponse(String error, String detail) {

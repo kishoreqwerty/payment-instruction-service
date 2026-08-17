@@ -7,5 +7,6 @@ public enum FailureStage {
     ENRICHMENT,
     ROUTING,
     DISPATCH,
-    CONFIRMATION
+    CONFIRMATION,
+    RECONCILIATION
 }

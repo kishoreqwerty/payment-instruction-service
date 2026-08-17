@@ -40,6 +40,11 @@ public abstract class AbstractRailSimulatorTest {
         return List.of(response.getBody());
     }
 
+    protected ResponseEntity<RailController.ReceivedSummary> getReceivedOne(String rail, String uetr) {
+        return restTemplate.getForEntity(
+                "/rail/{railId}/received/{uetr}", RailController.ReceivedSummary.class, rail, uetr);
+    }
+
     protected void loadScenario(String rail, String yaml) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);

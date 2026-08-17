@@ -10,7 +10,7 @@ import java.io.ByteArrayOutputStream;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 import javax.xml.namespace.QName;
 import javax.xml.validation.Schema;
 import org.slf4j.Logger;
@@ -73,7 +73,9 @@ public class CallbackSender {
      * Schedules a pacs.002 (ACSC/ACSP/RJCT) after delayMs. A null callbackUrl is a caller error (see
      * ScenarioConfig/application.yml), not silently skipped. {@code onStatusDetermined} fires the moment the rail
      * decides the outcome, before the message is built or sent -- the rail "knows" its own decision regardless of
-     * whether the callback POST actually reaches its target.
+     * whether the callback POST actually reaches its target. Carries {@code rejectReasonCode} alongside the status
+     * (null for anything but RJCT) so a reconciliation status query can answer with the same reason code a pacs.002
+     * would have carried, not just the bare status.
      */
     public ScheduledFuture<?> scheduleConfirmation(
             InboundPayment payment,
@@ -81,10 +83,10 @@ public class CallbackSender {
             String rejectReasonCode,
             long delayMs,
             String callbackUrl,
-            Consumer<String> onStatusDetermined) {
+            BiConsumer<String, String> onStatusDetermined) {
         return scheduler.schedule(
                 () -> {
-                    onStatusDetermined.accept(txStatus);
+                    onStatusDetermined.accept(txStatus, rejectReasonCode);
                     var document = pacs002Builder.build(payment, txStatus, rejectReasonCode);
                     byte[] xml = marshalAndValidate(
                             document,

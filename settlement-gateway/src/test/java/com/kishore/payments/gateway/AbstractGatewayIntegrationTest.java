@@ -183,9 +183,49 @@ public abstract class AbstractGatewayIntegrationTest {
         return railSimulatorClient.getForEntity(railSimulatorUrl("/rail/" + railId + "/received"), String.class);
     }
 
+    /**
+     * GET /rail/{railId}/payments/{uetr} on the embedded rail-simulator
+     * directly -- what {@link com.kishore.payments.gateway.reconciliation.RailStatusClient}
+     * itself queries, useful for a test asserting on the rail's own opinion
+     * before or independent of reconciliation acting on it. Deserializes
+     * straight into rail-simulator's own response type rather than a raw
+     * map: rail-simulator is a test-scope dependency of this module (see
+     * this class's own javadoc), so its types are safely on the classpath
+     * here.
+     */
+    protected ResponseEntity<com.kishore.payments.railsim.api.RailController.PaymentStatusResponse> railSimulatorGetPayment(String railId, String uetr) {
+        return railSimulatorClient.getForEntity(
+                railSimulatorUrl("/rail/" + railId + "/payments/" + uetr),
+                com.kishore.payments.railsim.api.RailController.PaymentStatusResponse.class);
+    }
+
+    /** GET /rail/{railId}/received/{uetr} on the embedded rail-simulator -- receipt + duplicate-delivery count for one UETR. */
+    protected ResponseEntity<com.kishore.payments.railsim.api.RailController.ReceivedSummary> railSimulatorReceivedOne(String railId, String uetr) {
+        return railSimulatorClient.getForEntity(
+                railSimulatorUrl("/rail/" + railId + "/received/" + uetr),
+                com.kishore.payments.railsim.api.RailController.ReceivedSummary.class);
+    }
+
     /** GET /rail/{railId}/received/{uetr}/raw -- the exact bytes rail-simulator received, for byte-for-byte fidelity checks. */
     protected ResponseEntity<byte[]> railSimulatorReceivedRaw(String railId, String uetr) {
         return railSimulatorClient.getForEntity(railSimulatorUrl("/rail/" + railId + "/received/" + uetr + "/raw"), byte[].class);
+    }
+
+    /**
+     * POSTs raw pacs.008 bytes directly to the embedded rail-simulator,
+     * bypassing settlement-gateway and DispatchOrchestrator entirely --
+     * for a test that needs to simulate an already-redispatched original
+     * arriving late (its own stored {@code dispatch_record.request_payload},
+     * re-delivered), independent of whether this service would ever
+     * actually redeliver it itself. A blocking POST, exactly like a real
+     * dispatch: it returns (or throws, for a scenario that drops the
+     * connection) only once rail-simulator has fully decided how to answer.
+     */
+    protected ResponseEntity<String> railSimulatorPostPayment(String railId, byte[] pacs008Xml) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_XML);
+        return railSimulatorClient.postForEntity(
+                railSimulatorUrl("/rail/" + railId + "/payments"), new HttpEntity<>(pacs008Xml, headers), String.class);
     }
 
     /**

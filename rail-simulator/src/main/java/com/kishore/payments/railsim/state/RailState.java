@@ -27,6 +27,9 @@ public class RailState {
     private final Map<String, RecordedPayment> recorded = new ConcurrentHashMap<>();
     private final Set<ScheduledFuture<?>> pendingCallbacks = new CopyOnWriteArraySet<>();
     private final Map<String, AtomicInteger> errorAttempts = new ConcurrentHashMap<>();
+    private final Map<String, AtomicInteger> duplicateReceiptCounts = new ConcurrentHashMap<>();
+    private final Map<String, AtomicInteger> statusQueryAttempts = new ConcurrentHashMap<>();
+    private final Map<String, AtomicInteger> deliveryAttempts = new ConcurrentHashMap<>();
 
     public RailState(RailId railId, ScenarioConfig initialScenario) {
         this.railId = railId;
@@ -55,6 +58,9 @@ public class RailState {
         }
         pendingCallbacks.clear();
         errorAttempts.clear();
+        duplicateReceiptCounts.clear();
+        statusQueryAttempts.clear();
+        deliveryAttempts.clear();
     }
 
     /** The 1-based ordinal of the request that just arrived, for everyNth matching. */
@@ -62,8 +68,28 @@ public class RailState {
         return requestOrdinal.incrementAndGet();
     }
 
+    /**
+     * First receipt for a UETR is recorded as-is; a later one for a UETR
+     * already on file is a duplicate delivery -- exactly what a redispatch
+     * carrying the same UETR as its original produces if the original
+     * turns out to have arrived after all. The original's data (received
+     * time, raw bytes) is kept rather than overwritten, and the duplicate
+     * is only counted, via {@link #duplicateReceiptCount}: this is how a
+     * test proves a redispatch was recognised as a duplicate rather than
+     * processed as a second, distinct payment.
+     */
     public void record(RecordedPayment payment) {
-        recorded.put(payment.payment().uetr(), payment);
+        String uetr = payment.payment().uetr();
+        RecordedPayment previous = recorded.putIfAbsent(uetr, payment);
+        if (previous != null) {
+            duplicateReceiptCounts.computeIfAbsent(uetr, id -> new AtomicInteger(0)).incrementAndGet();
+        }
+    }
+
+    /** How many times a payment has been received for this UETR after the first -- 0 if never or only received once. */
+    public int duplicateReceiptCount(String uetr) {
+        AtomicInteger count = duplicateReceiptCounts.get(uetr);
+        return count == null ? 0 : count.get();
     }
 
     /** The 1-based count of ERROR_5XX attempts recorded so far for this UETR, after incrementing for the current one. */
@@ -71,8 +97,29 @@ public class RailState {
         return errorAttempts.computeIfAbsent(uetr, id -> new AtomicInteger(0)).incrementAndGet();
     }
 
-    public void updateStatus(String uetr, String railStatus) {
-        recorded.computeIfPresent(uetr, (id, existing) -> existing.withRailStatus(railStatus));
+    /** The 1-based count of status queries answered so far for this UETR, after incrementing for the current one -- for UNKNOWN_THEN_KNOWN. */
+    public int nextStatusQueryAttempt(String uetr) {
+        return statusQueryAttempts.computeIfAbsent(uetr, id -> new AtomicInteger(0)).incrementAndGet();
+    }
+
+    /**
+     * The 1-based count of times this exact UETR has been POSTed to this
+     * rail, after incrementing for the current delivery -- 1 for an
+     * original dispatch, 2 for its first redispatch, and so on. Computed
+     * before behaviour resolution, per delivery, regardless of what that
+     * behaviour turns out to be (accept, drop, or anything else) -- see
+     * {@link com.kishore.payments.railsim.scenario.MatchCriteria#deliveryAttemptAtLeast}
+     * for why this exists: a redispatch carries the same content as its
+     * original, so this is the one dimension a scenario rule can use to
+     * tell them apart that doesn't depend on how many other payments are
+     * interleaving on the same rail.
+     */
+    public int nextDeliveryAttempt(String uetr) {
+        return deliveryAttempts.computeIfAbsent(uetr, id -> new AtomicInteger(0)).incrementAndGet();
+    }
+
+    public void updateStatus(String uetr, String railStatus, String railReasonCode) {
+        recorded.computeIfPresent(uetr, (id, existing) -> existing.withRailStatus(railStatus, railReasonCode));
     }
 
     public RecordedPayment find(String uetr) {

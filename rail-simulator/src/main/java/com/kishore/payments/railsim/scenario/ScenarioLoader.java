@@ -48,7 +48,12 @@ public class ScenarioLoader {
 
         String statusCallbackUrl = root.get("statusCallbackUrl") instanceof String s ? s : null;
         String returnCallbackUrl = root.get("returnCallbackUrl") instanceof String s ? s : null;
-        return new ScenarioConfig(rail, defaults, rules, statusCallbackUrl, returnCallbackUrl);
+        StatusQueryBehaviour statusQueryBehaviour = enumValue(root, "statusQueryBehaviour", StatusQueryBehaviour.class);
+        Integer statusQueryUnknownCount = toInteger(root.get("statusQueryUnknownCount"));
+        Long statusQuerySlowDelayMs = toLong(root.get("statusQuerySlowDelayMs"));
+        return new ScenarioConfig(
+                rail, defaults, rules, statusCallbackUrl, returnCallbackUrl,
+                statusQueryBehaviour, statusQueryUnknownCount, statusQuerySlowDelayMs);
     }
 
     private static void requireFullyPopulated(BehaviorSpec defaults, String rail) {
@@ -85,6 +90,7 @@ public class ScenarioLoader {
                 map.get("creditorAccountEndsWith") instanceof String s ? s : null,
                 map.get("debtorAgentBic") instanceof String s ? s : null,
                 toInteger(map.get("everyNth")),
+                toInteger(map.get("deliveryAttemptAtLeast")),
                 map.get("always") instanceof Boolean b ? b : null);
     }
 

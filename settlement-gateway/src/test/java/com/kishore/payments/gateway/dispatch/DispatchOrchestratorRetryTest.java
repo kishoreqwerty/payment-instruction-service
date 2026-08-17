@@ -69,7 +69,8 @@ class DispatchOrchestratorRetryTest {
                 Map.of("FEDWIRE", "http://localhost:1"),
                 Duration.ofSeconds(2),
                 Duration.ofSeconds(10),
-                new GatewayProperties.DispatchRetry(3, Duration.ofMillis(1), 2.0));
+                new GatewayProperties.DispatchRetry(3, Duration.ofMillis(1), 2.0),
+                null);
 
         PlatformTransactionManager transactionManager = noOpTransactionManager();
         Clock clock = Clock.fixed(java.time.Instant.now(), ZoneOffset.UTC);
@@ -98,6 +99,7 @@ class DispatchOrchestratorRetryTest {
         verify(railDispatcher, times(1)).dispatch(any(), any());
         verify(stateWriter, times(1))
                 .transition(eq(instruction.getInstructionId()), eq(InstructionState.SENT_UNCONFIRMED), eq(ActorType.SYSTEM), any(), any(), any());
+        verify(metrics, times(1)).recordDispatchOutcome("FEDWIRE", "timeout");
         verify(metrics, times(1)).recordDispatchAmbiguous("FEDWIRE");
     }
 

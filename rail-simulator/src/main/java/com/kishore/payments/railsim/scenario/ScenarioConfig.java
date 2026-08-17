@@ -16,8 +16,24 @@ import java.util.List;
  * returnCallbackUrl} falls back to {@code statusCallbackUrl} first (see
  * {@link #returnCallbackUrl()}), so a scenario that only configures one URL
  * keeps working for both message types, exactly as before this split.
+ *
+ * <p>{@code statusQueryBehaviour} and its parameters govern {@code GET
+ * /rail/{railId}/payments/{uetr}} -- a second, independent interaction with
+ * the rail (reconciliation), not the dispatch/confirmation path {@link
+ * BehaviorSpec} governs. They are scenario-level, not per-rule: a status
+ * query happens after dispatch, sometimes for a UETR the rail never
+ * recorded at all, so there is no inbound payment left to match rules
+ * against by the time one arrives.
  */
-public record ScenarioConfig(String rail, BehaviorSpec defaults, List<ScenarioRule> rules, String statusCallbackUrl, String returnCallbackUrl) {
+public record ScenarioConfig(
+        String rail,
+        BehaviorSpec defaults,
+        List<ScenarioRule> rules,
+        String statusCallbackUrl,
+        String returnCallbackUrl,
+        StatusQueryBehaviour statusQueryBehaviour,
+        Integer statusQueryUnknownCount,
+        Long statusQuerySlowDelayMs) {
 
     public ScenarioConfig {
         rules = List.copyOf(rules);
@@ -28,10 +44,25 @@ public record ScenarioConfig(String rail, BehaviorSpec defaults, List<ScenarioRu
         return returnCallbackUrl != null ? returnCallbackUrl : statusCallbackUrl;
     }
 
+    /** {@link StatusQueryBehaviour#NORMAL} unless a scenario says otherwise. */
+    public StatusQueryBehaviour statusQueryBehaviour() {
+        return statusQueryBehaviour != null ? statusQueryBehaviour : StatusQueryBehaviour.NORMAL;
+    }
+
+    /** How many leading status queries {@link StatusQueryBehaviour#UNKNOWN_THEN_KNOWN} answers UNKNOWN before it starts answering truthfully. Defaults to 1. */
+    public int resolvedStatusQueryUnknownCount() {
+        return statusQueryUnknownCount != null ? statusQueryUnknownCount : 1;
+    }
+
+    /** How long {@link StatusQueryBehaviour#SLOW} holds a status query before answering. Defaults to 0. */
+    public long resolvedStatusQuerySlowDelayMs() {
+        return statusQuerySlowDelayMs != null ? statusQuerySlowDelayMs : 0L;
+    }
+
     /** First matching rule's overrides merged onto the defaults; the defaults themselves if nothing matches. */
-    public BehaviorSpec resolve(InboundPayment payment, long requestOrdinal) {
+    public BehaviorSpec resolve(InboundPayment payment, long requestOrdinal, int deliveryAttempt) {
         for (ScenarioRule rule : rules) {
-            if (rule.match().matches(payment, requestOrdinal)) {
+            if (rule.match().matches(payment, requestOrdinal, deliveryAttempt)) {
                 return rule.overrides().mergeOnto(defaults);
             }
         }

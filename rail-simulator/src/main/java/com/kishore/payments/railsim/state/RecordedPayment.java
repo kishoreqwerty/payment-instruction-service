@@ -19,13 +19,13 @@ import java.time.Instant;
  * the original bytes on hand, not with whatever a re-serialization of the
  * parsed fields would produce.
  */
-public record RecordedPayment(InboundPayment payment, Instant receivedAt, String railStatus, byte[] rawPayload) {
+public record RecordedPayment(InboundPayment payment, Instant receivedAt, String railStatus, String railReasonCode, byte[] rawPayload) {
 
     public RecordedPayment(InboundPayment payment, Instant receivedAt, byte[] rawPayload) {
-        this(payment, receivedAt, null, rawPayload);
+        this(payment, receivedAt, null, null, rawPayload);
     }
 
-    public RecordedPayment withRailStatus(String railStatus) {
-        return new RecordedPayment(payment, receivedAt, railStatus, rawPayload);
+    public RecordedPayment withRailStatus(String railStatus, String railReasonCode) {
+        return new RecordedPayment(payment, receivedAt, railStatus, railReasonCode, rawPayload);
     }
 }

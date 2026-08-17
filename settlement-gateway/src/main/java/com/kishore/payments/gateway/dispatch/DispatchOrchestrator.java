@@ -9,6 +9,7 @@ import com.kishore.payments.core.outbox.OutboxHeaders;
 import com.kishore.payments.core.outbox.OutboxMessage;
 import com.kishore.payments.core.outbox.OutboxWriter;
 import com.kishore.payments.core.state.ConcurrentTransitionException;
+import com.kishore.payments.core.state.IllegalTransitionException;
 import com.kishore.payments.core.state.InstructionState;
 import com.kishore.payments.core.state.InstructionStateWriter;
 import com.kishore.payments.core.state.TransitionResult;
@@ -96,14 +97,25 @@ public class DispatchOrchestrator {
         try {
             pacs008Xml = assembler.assemble(instruction);
         } catch (BusinessFailureException e) {
-            transactionTemplate.executeWithoutResult(status -> handleBusinessFailure(instruction, e));
+            runDiscardingSupersededTransitions(() -> handleBusinessFailure(instruction, e), instruction.getInstructionId());
             return;
         }
 
         int maxAttempts = properties.dispatchRetry().maxAttempts();
         Duration backoff = properties.dispatchRetry().initialBackoff();
 
-        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+        // attempt_no continues from whatever this UETR's dispatch_record
+        // history already holds, rather than always starting at 1: this
+        // dispatch() call might be a Phase 7 redispatch (the same UETR
+        // re-entering ROUTED after SENT_UNCONFIRMED), which has to produce
+        // attempt_no 2, 3, ... to satisfy dispatch_record's UNIQUE (uetr,
+        // attempt_no) constraint rather than colliding with the original
+        // attempt's row. For a first-time dispatch this is a no-op --
+        // maxAttemptNo is 0, so numbering still starts at 1.
+        int startingAttempt = dispatchRecords.maxAttemptNo(instruction.getUetr()) + 1;
+
+        for (int offset = 0; offset < maxAttempts; offset++) {
+            int attempt = startingAttempt + offset;
             byte[] payload = pacs008Xml;
             int attemptNo = attempt;
             DispatchRecordEntity record = transactionTemplate.execute(status -> writePendingRecord(instruction, rail, payload, attemptNo));
@@ -114,31 +126,57 @@ public class DispatchOrchestrator {
 
             if (outcome instanceof DispatchOutcome.Acknowledged acknowledged) {
                 metrics.recordDispatchOutcome(rail, "acknowledged");
-                transactionTemplate.executeWithoutResult(status -> handleAcknowledged(instruction, record, acknowledged));
+                runDiscardingSupersededTransitions(() -> handleAcknowledged(instruction, record, acknowledged), instruction.getInstructionId());
                 return;
             } else if (outcome instanceof DispatchOutcome.Rejected rejected) {
                 metrics.recordDispatchOutcome(rail, "rejected");
-                transactionTemplate.executeWithoutResult(status -> handleRejected(instruction, record, rejected));
+                runDiscardingSupersededTransitions(() -> handleRejected(instruction, record, rejected), instruction.getInstructionId());
                 return;
             } else if (outcome instanceof DispatchOutcome.Ambiguous ambiguous) {
                 metrics.recordDispatchOutcome(rail, "timeout");
                 metrics.recordDispatchAmbiguous(rail);
-                transactionTemplate.executeWithoutResult(status -> handleAmbiguous(instruction, record, ambiguous));
+                runDiscardingSupersededTransitions(() -> handleAmbiguous(instruction, record, ambiguous), instruction.getInstructionId());
                 return;
             } else if (outcome instanceof DispatchOutcome.ServerError serverError) {
                 metrics.recordDispatchOutcome(rail, "failed");
                 transactionTemplate.executeWithoutResult(status -> markFailed(record, serverError.httpStatus()));
 
-                if (attempt >= maxAttempts) {
-                    int attemptsMade = attempt;
-                    transactionTemplate.executeWithoutResult(status -> handleServerErrorExhausted(instruction, serverError, attemptsMade));
+                if (offset == maxAttempts - 1) {
+                    int attemptsMade = offset + 1;
+                    runDiscardingSupersededTransitions(
+                            () -> handleServerErrorExhausted(instruction, serverError, attemptsMade), instruction.getInstructionId());
                     return;
                 }
-                log.info("Rail {} returned {} for {}, attempt {}/{}, retrying in {}", rail, serverError.httpStatus(),
-                        instruction.getInstructionId(), attempt, maxAttempts, backoff);
+                log.info("Rail {} returned {} for {}, attempt {}, retrying in {}", rail, serverError.httpStatus(),
+                        instruction.getInstructionId(), attempt, backoff);
                 sleep(backoff);
                 backoff = Duration.ofMillis((long) (backoff.toMillis() * properties.dispatchRetry().backoffMultiplier()));
             }
+        }
+    }
+
+    /**
+     * Runs one of the terminal per-outcome handlers in its own transaction,
+     * tolerating a transition that has become stale or outright illegal by
+     * the time this attempt resolves. Phase 7 means dispatch() is no longer
+     * the only writer that can move an instruction off {@code ROUTED} or
+     * {@code SENT_UNCONFIRMED}: {@code AmbiguityResolver} can independently
+     * redispatch, resolve via reconciliation, or move a stuck {@code
+     * PENDING} attempt to {@code INVESTIGATION} while this exact attempt is
+     * still in flight. Catching here, outside the transaction, is required
+     * -- catching inside the handler (where {@code stateWriter.transition}
+     * itself runs) would try to commit a transaction Spring has already
+     * marked rollback-only once that call throws, failing with {@code
+     * UnexpectedRollbackException} instead of the clean discard this is.
+     */
+    private void runDiscardingSupersededTransitions(Runnable handler, UUID instructionId) {
+        try {
+            transactionTemplate.executeWithoutResult(status -> handler.run());
+        } catch (ConcurrentTransitionException e) {
+            log.info("Concurrent transition detected for {}, discarding as duplicate", instructionId);
+        } catch (IllegalTransitionException e) {
+            log.info("Illegal transition ({} -> {}) for {}, another writer already moved it elsewhere; discarding as superseded",
+                    e.from(), e.to(), instructionId);
         }
     }
 
@@ -166,13 +204,18 @@ public class DispatchOrchestrator {
     }
 
     private void transitionAndPublishSent(PaymentInstructionEntity instruction, DispatchRecordEntity record, InstructionState to) {
-        try {
-            TransitionResult result =
-                    stateWriter.transition(instruction.getInstructionId(), to, ActorType.SYSTEM, ACTOR_ID, null, null);
-            outboxWriter.write(toDispatchMessage(instruction, record, to, result));
-        } catch (ConcurrentTransitionException e) {
-            log.info("Concurrent transition detected for {}, discarding as duplicate", instruction.getInstructionId());
-        }
+        // Deliberately no try/catch here: stateWriter.transition is itself
+        // @Transactional and joins whichever transaction the caller opened
+        // (one of the transactionTemplate.executeWithoutResult(...) calls in
+        // dispatch()), so once it throws, that transaction is already marked
+        // rollback-only by Spring's interceptor -- catching here and
+        // returning normally would just fail again with
+        // UnexpectedRollbackException when the caller's transaction tries to
+        // commit. Letting it propagate rolls back cleanly; dispatch()'s call
+        // sites are where this is actually handled, outside the transaction.
+        TransitionResult result =
+                stateWriter.transition(instruction.getInstructionId(), to, ActorType.SYSTEM, ACTOR_ID, null, null);
+        outboxWriter.write(toDispatchMessage(instruction, record, to, result));
     }
 
     private void handleRejected(PaymentInstructionEntity instruction, DispatchRecordEntity record, DispatchOutcome.Rejected outcome) {
@@ -199,13 +242,11 @@ public class DispatchOrchestrator {
     }
 
     private void toException(PaymentInstructionEntity instruction, FailureDetail detail) {
-        try {
-            TransitionResult result = stateWriter.transition(
-                    instruction.getInstructionId(), InstructionState.EXCEPTION, ActorType.SYSTEM, ACTOR_ID, detail.reasonCode(), detail.detail());
-            outboxWriter.write(toExceptionMessage(instruction, result, detail));
-        } catch (ConcurrentTransitionException e) {
-            log.info("Concurrent transition detected for {}, discarding as duplicate", instruction.getInstructionId());
-        }
+        // Same reasoning as transitionAndPublishSent: no try/catch here,
+        // for the same rollback-only reason.
+        TransitionResult result = stateWriter.transition(
+                instruction.getInstructionId(), InstructionState.EXCEPTION, ActorType.SYSTEM, ACTOR_ID, detail.reasonCode(), detail.detail());
+        outboxWriter.write(toExceptionMessage(instruction, result, detail));
     }
 
     private OutboxMessage toDispatchMessage(PaymentInstructionEntity instruction, DispatchRecordEntity record, InstructionState to, TransitionResult result) {

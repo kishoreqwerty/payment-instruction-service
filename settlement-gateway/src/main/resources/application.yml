@@ -26,7 +26,11 @@ payments:
     dlq-partitions: 3
   outbox:
     batch-size: 100
-    known-topics: payments.sent,payments.settled,payments.exceptions
+    # payments.routed is here even though this service didn't originally
+    # produce to it (processing-service's RoutingConsumer does): Phase 7's
+    # AmbiguityResolver redispatches by writing the same InstructionRouted
+    # event this service's own RoutedConsumer already knows how to consume.
+    known-topics: payments.sent,payments.settled,payments.exceptions,payments.routed
     retention: 7d
     retention-batch-size: 1000
   gateway:
@@ -49,6 +53,25 @@ payments:
       max-attempts: 5
       initial-backoff: 1s
       backoff-multiplier: 2.0
+    # Phase 7 ambiguity resolution (.notes/ARCHITECTURE.md §6.4,
+    # .notes/reports/PHASE-7-REPORT.md §5 for the reasoning behind these
+    # numbers). consecutive-unknown-threshold is the phase brief's "two
+    # consecutive UNKNOWN observations" rule; the other numbers are this
+    # implementation's own judgment calls, made configurable rather than
+    # hardcoded so they are visible, documented decisions.
+    reconciliation:
+      # ISO-8601, not the "2m" shorthand the other Duration properties on
+      # this page use -- this value also feeds @Scheduled's fixedDelayString
+      # on AmbiguityResolver.reconcile(), and Spring's own scheduling
+      # annotation parses only a plain millisecond long or ISO-8601, not
+      # Boot's DurationStyle shorthand.
+      interval: PT2M
+      grace-period: 30s
+      batch-size: 50
+      consecutive-unknown-threshold: 2
+      inconclusive-window: 10
+      max-redispatch-attempts: 3
+      pending-threshold: 5m
 
 management:
   endpoints:

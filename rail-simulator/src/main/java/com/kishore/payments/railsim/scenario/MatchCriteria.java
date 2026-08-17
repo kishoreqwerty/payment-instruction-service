@@ -11,7 +11,20 @@ import java.math.BigDecimal;
  * @param everyNth matches when {@code requestOrdinal} (the 1-based count of
  *                 requests this rail has received since its scenario was
  *                 last loaded) is an exact multiple -- the 20th, 40th,
- *                 60th... request for {@code everyNth: 20}, never a nearby one
+ *                 60th... request for {@code everyNth: 20}, never a nearby one.
+ *                 A whole-rail counter: unsuitable for distinguishing a
+ *                 redispatch from its original once many payments interleave
+ *                 on the same rail concurrently -- {@code deliveryAttemptAtLeast}
+ *                 exists for that.
+ * @param deliveryAttemptAtLeast matches when this is at least the Nth time
+ *                 *this exact UETR* has been POSTed to this rail (1 for an
+ *                 original delivery, 2 for its first redispatch, and so on),
+ *                 regardless of how many other payments' requests interleave
+ *                 with it. A redispatch carries the same content as its
+ *                 original by design (.notes/ARCHITECTURE.md §6.4), so
+ *                 nothing else in a match block can tell them apart --
+ *                 this is the one dimension that can, because it's scoped
+ *                 to the UETR, not the rail's overall request stream.
  */
 public record MatchCriteria(
         BigDecimal amountGreaterThan,
@@ -20,9 +33,10 @@ public record MatchCriteria(
         String creditorAccountEndsWith,
         String debtorAgentBic,
         Integer everyNth,
+        Integer deliveryAttemptAtLeast,
         Boolean always) {
 
-    public boolean matches(InboundPayment payment, long requestOrdinal) {
+    public boolean matches(InboundPayment payment, long requestOrdinal, int deliveryAttempt) {
         // A standalone override, not combined with the other fields: written
         // for a deliberate catch-all rule (always: true) or a deliberately
         // disabled one (always: false), not alongside other criteria.
@@ -45,6 +59,9 @@ public record MatchCriteria(
             return false;
         }
         if (everyNth != null && everyNth > 0 && requestOrdinal % everyNth != 0) {
+            return false;
+        }
+        if (deliveryAttemptAtLeast != null && deliveryAttempt < deliveryAttemptAtLeast) {
             return false;
         }
         return true;

@@ -18,7 +18,7 @@ public final class StateTransitionTable {
     public record Transition(InstructionState from, InstructionState to) {
     }
 
-    private static final int EXPECTED_LEGAL_TRANSITION_COUNT = 22;
+    private static final int EXPECTED_LEGAL_TRANSITION_COUNT = 23;
 
     private static final Map<InstructionState, Set<InstructionState>> TABLE = buildTable();
     private static final Set<Transition> ALL_TRANSITIONS = buildAllTransitions();
@@ -57,6 +57,15 @@ public final class StateTransitionTable {
         // both success and failure. See .notes/ARCHITECTURE.md §6.4.
         table.get(InstructionState.ROUTED).add(InstructionState.SENT_UNCONFIRMED);
         table.get(InstructionState.ROUTED).add(InstructionState.EXCEPTION);
+        // Added in Phase 7: a PENDING dispatch_record with no resolution
+        // means the process died between committing that row and making the
+        // network call (the Phase 6 kill scenario). The instruction never
+        // left ROUTED -- the timeout/drop path that would normally reach
+        // SENT_UNCONFIRMED never ran -- so INVESTIGATION has to be reachable
+        // from ROUTED directly, not only from SENT/SENT_UNCONFIRMED. Same
+        // three-worlds ambiguity as .notes/ARCHITECTURE.md §6.4, with even
+        // less information: a human, not automation, decides what happened.
+        table.get(InstructionState.ROUTED).add(InstructionState.INVESTIGATION);
 
         table.get(InstructionState.SENT_UNCONFIRMED).add(InstructionState.SENT);
         table.get(InstructionState.SENT_UNCONFIRMED).add(InstructionState.ROUTED);

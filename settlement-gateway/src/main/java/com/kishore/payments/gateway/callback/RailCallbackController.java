@@ -52,6 +52,11 @@ public class RailCallbackController {
         if (!validation.isValid()) {
             return ResponseEntity.badRequest().body(new SchemaInvalidResponse(validation.wellFormed(), validation.violations()));
         }
+        // Phase 7: a status racing AmbiguityResolver's own resolution of the
+        // same instruction and losing -- the ambiguity it thought it needed
+        // to resolve is already resolved, one way or another -- is handled
+        // inside CallbackCorrelationService#handleStatus itself, alongside
+        // its own ACK-pending retry; nothing to catch here.
         correlationService.handleStatus(railId, pacs002Parser.parse(body));
         return ResponseEntity.status(HttpStatus.ACCEPTED).build();
     }

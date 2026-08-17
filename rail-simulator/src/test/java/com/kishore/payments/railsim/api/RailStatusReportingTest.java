@@ -105,5 +105,6 @@ class RailStatusReportingTest extends AbstractRailSimulatorTest {
         ResponseEntity<RailController.PaymentStatusResponse> response = getPayment("fedwire", fixture.uetr());
         assertThat(response.getBody().status()).isEqualTo("KNOWN");
         assertThat(response.getBody().railStatus()).isEqualTo(confirmation);
+        assertThat(response.getBody().railReasonCode()).isEqualTo(rejectReasonCode);
     }
 }
