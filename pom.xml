@@ -18,6 +18,7 @@
     <module>processing-service</module>
     <module>rail-simulator</module>
     <module>settlement-gateway</module>
+    <module>exception-service</module>
   </modules>
 
   <properties>

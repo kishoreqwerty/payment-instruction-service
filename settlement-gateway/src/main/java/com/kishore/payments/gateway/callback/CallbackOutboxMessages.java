@@ -5,7 +5,7 @@ import com.kishore.payments.core.outbox.OutboxHeaders;
 import com.kishore.payments.core.outbox.OutboxMessage;
 import com.kishore.payments.core.state.InstructionState;
 import com.kishore.payments.core.state.TransitionResult;
-import com.kishore.payments.gateway.event.InstructionExceptionEvent;
+import com.kishore.payments.core.event.InstructionExceptionEvent;
 import com.kishore.payments.gateway.event.InstructionSettlementEvent;
 import com.kishore.payments.gateway.failure.FailureDetail;
 import java.time.Clock;

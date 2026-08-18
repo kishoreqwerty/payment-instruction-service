@@ -77,6 +77,7 @@ public abstract class AbstractProcessingIntegrationTest {
         registry.add("payments.kafka.received-partitions", () -> 1);
         registry.add("payments.kafka.validated-partitions", () -> 1);
         registry.add("payments.kafka.enriched-partitions", () -> 1);
+        registry.add("payments.kafka.repaired-partitions", () -> 1);
     }
 
     @Autowired

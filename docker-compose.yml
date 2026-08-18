@@ -68,6 +68,7 @@ services:
         rpk topic create payments.sent --partitions 12 --replicas 1 --brokers redpanda:9092 -c retention.ms=604800000
         rpk topic create payments.settled --partitions 12 --replicas 1 --brokers redpanda:9092 -c retention.ms=2592000000
         rpk topic create payments.exceptions --partitions 6 --replicas 1 --brokers redpanda:9092 -c retention.ms=2592000000
+        rpk topic create payments.repaired --partitions 6 --replicas 1 --brokers redpanda:9092 -c retention.ms=604800000
         rpk topic create payments.dlq --partitions 3 --replicas 1 --brokers redpanda:9092 -c retention.ms=7776000000
 
   redpanda-console:

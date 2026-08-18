@@ -194,6 +194,14 @@ public class PaymentInstructionEntity implements Persistable<UUID> {
         return uetr;
     }
 
+    /**
+     * No corresponding setter for endToEndId or uetr: those are the
+     * payment's identity, not content, and Phase 8's repair allowlist
+     * (exception-service) deliberately excludes them along with amount,
+     * currency, debtorAccount, and debtorAgentBic -- a repair changes a
+     * mistake in how the payment was described, not which payment it is,
+     * and not a reference-data problem on our own side of it.
+     */
     public String getEndToEndId() {
         return endToEndId;
     }
@@ -230,12 +238,24 @@ public class PaymentInstructionEntity implements Persistable<UUID> {
         return creditorName;
     }
 
+    public void setCreditorName(String creditorName) {
+        this.creditorName = creditorName;
+    }
+
     public String getCreditorAccount() {
         return creditorAccount;
     }
 
+    public void setCreditorAccount(String creditorAccount) {
+        this.creditorAccount = creditorAccount;
+    }
+
     public String getCreditorAgentBic() {
         return creditorAgentBic;
+    }
+
+    public void setCreditorAgentBic(String creditorAgentBic) {
+        this.creditorAgentBic = creditorAgentBic;
     }
 
     public BigDecimal getAmount() {
@@ -256,6 +276,10 @@ public class PaymentInstructionEntity implements Persistable<UUID> {
 
     public LocalDate getRequestedExecDate() {
         return requestedExecDate;
+    }
+
+    public void setRequestedExecDate(LocalDate requestedExecDate) {
+        this.requestedExecDate = requestedExecDate;
     }
 
     public LocalDate getValueDate() {

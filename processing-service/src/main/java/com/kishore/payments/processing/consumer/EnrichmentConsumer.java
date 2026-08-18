@@ -12,7 +12,7 @@ import com.kishore.payments.core.state.InstructionState;
 import com.kishore.payments.core.state.InstructionStateWriter;
 import com.kishore.payments.core.state.TransitionResult;
 import com.kishore.payments.processing.enrichment.EnrichmentChain;
-import com.kishore.payments.processing.event.InstructionExceptionEvent;
+import com.kishore.payments.core.event.InstructionExceptionEvent;
 import com.kishore.payments.processing.event.InstructionStageEvent;
 import com.kishore.payments.processing.failure.BusinessFailureException;
 import java.time.OffsetDateTime;

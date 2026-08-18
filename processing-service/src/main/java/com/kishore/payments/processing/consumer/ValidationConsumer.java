@@ -4,6 +4,7 @@ import com.kishore.payments.core.domain.ActorType;
 import com.kishore.payments.core.domain.FailureStage;
 import com.kishore.payments.core.event.EventJson;
 import com.kishore.payments.core.event.InstructionReceivedEvent;
+import com.kishore.payments.core.event.InstructionRepairedEvent;
 import com.kishore.payments.core.instruction.PaymentInstructionEntity;
 import com.kishore.payments.core.instruction.PaymentInstructionRepository;
 import com.kishore.payments.core.outbox.OutboxHeaders;
@@ -13,7 +14,7 @@ import com.kishore.payments.core.state.ConcurrentTransitionException;
 import com.kishore.payments.core.state.InstructionState;
 import com.kishore.payments.core.state.InstructionStateWriter;
 import com.kishore.payments.core.state.TransitionResult;
-import com.kishore.payments.processing.event.InstructionExceptionEvent;
+import com.kishore.payments.core.event.InstructionExceptionEvent;
 import com.kishore.payments.processing.event.InstructionStageEvent;
 import com.kishore.payments.processing.failure.FailureDetail;
 import com.kishore.payments.processing.validation.ValidationChain;
@@ -32,7 +33,11 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Stage 1: RECEIVED -> VALIDATED (or -> EXCEPTION). Consumes
- * payments.received, produced by intake-service.
+ * payments.received (produced by intake-service) and payments.repaired
+ * (produced by exception-service, Phase 8, when a repair or a static-data
+ * retry sends an instruction back into the pipeline) -- two topics, two
+ * listener methods, one shared {@link #process} that doesn't know or care
+ * which one triggered it.
  *
  * <p>Idempotency is the first thing this does, before any validation work,
  * and it compares {@code sequence_no}, not state (see {@link
@@ -79,6 +84,26 @@ public class ValidationConsumer {
             concurrency = "${payments.kafka.received-partitions:12}")
     public void onMessage(ConsumerRecord<String, String> record, Acknowledgment ack) {
         InstructionReceivedEvent event = readEvent(record.value());
+        transactionTemplate.executeWithoutResult(status -> process(event.instructionId(), event.sequenceNo()));
+        ack.acknowledge();
+    }
+
+    /**
+     * A repaired instruction (.notes/ARCHITECTURE.md §5.2) re-enters exactly
+     * here: exception-service has already transitioned it {@code EXCEPTION
+     * -> REPAIRED -> VALIDATED} and published this event, so all this
+     * listener needs to do is the same idempotency-checked re-run of {@link
+     * #process} a first-time {@code payments.received} delivery would --
+     * see that method's own javadoc on why the check compares {@code
+     * sequence_no}, not state. A repair that introduces a new defect is
+     * caught here by the same validation rules that caught the original.
+     */
+    @KafkaListener(
+            topics = "payments.repaired",
+            groupId = "${payments.kafka.consumer-group}",
+            concurrency = "${payments.kafka.repaired-partitions:6}")
+    public void onRepaired(ConsumerRecord<String, String> record, Acknowledgment ack) {
+        InstructionRepairedEvent event = readRepairedEvent(record.value());
         transactionTemplate.executeWithoutResult(status -> process(event.instructionId(), event.sequenceNo()));
         ack.acknowledge();
     }
@@ -176,6 +201,14 @@ public class ValidationConsumer {
             return EventJson.MAPPER.readValue(json, InstructionReceivedEvent.class);
         } catch (Exception e) {
             throw new IllegalStateException("Malformed payments.received event: " + json, e);
+        }
+    }
+
+    private static InstructionRepairedEvent readRepairedEvent(String json) {
+        try {
+            return EventJson.MAPPER.readValue(json, InstructionRepairedEvent.class);
+        } catch (Exception e) {
+            throw new IllegalStateException("Malformed payments.repaired event: " + json, e);
         }
     }
 }

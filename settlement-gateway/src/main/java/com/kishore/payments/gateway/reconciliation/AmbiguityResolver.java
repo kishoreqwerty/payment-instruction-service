@@ -17,7 +17,7 @@ import com.kishore.payments.gateway.GatewayMetrics;
 import com.kishore.payments.gateway.GatewayProperties;
 import com.kishore.payments.gateway.dispatch.DispatchRecordRepository;
 import com.kishore.payments.gateway.dispatch.DispatchState;
-import com.kishore.payments.gateway.event.InstructionExceptionEvent;
+import com.kishore.payments.core.event.InstructionExceptionEvent;
 import com.kishore.payments.gateway.event.InstructionSettlementEvent;
 import com.kishore.payments.gateway.failure.FailureDetail;
 import java.time.Clock;
@@ -324,7 +324,15 @@ public class AmbiguityResolver {
     private void enterInvestigation(PaymentInstructionEntity instruction, String reason) {
         TransitionResult result = stateWriter.transition(
                 instruction.getInstructionId(), InstructionState.INVESTIGATION, ActorType.SYSTEM, ACTOR_ID, null, reason);
-        FailureDetail detail = new FailureDetail(null, Repairability.REPAIRABLE, null, reason);
+        // TRANSIENT, not REPAIRABLE: matches .notes/ARCHITECTURE.md §6.1's
+        // own taxonomy row for exactly this situation ("No pacs.002 within
+        // SLA ... TRANSIENT ... Investigation case, do not auto-resend").
+        // An INVESTIGATION case has no field to fix -- the payment's content
+        // was never in question, only whether the rail received it -- so
+        // REPAIRABLE would have been actively misleading to Phase 8's
+        // exception-service, which uses repairability to decide what
+        // workflow a case gets.
+        FailureDetail detail = new FailureDetail(null, Repairability.TRANSIENT, null, reason);
         outboxWriter.write(toExceptionMessage(instruction, result, detail));
     }
 

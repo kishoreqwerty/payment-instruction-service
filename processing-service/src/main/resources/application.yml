@@ -30,6 +30,7 @@ payments:
     received-partitions: 12
     validated-partitions: 12
     enriched-partitions: 12
+    repaired-partitions: 6
     dlq-topic: payments.dlq
     dlq-partitions: 3
   outbox:

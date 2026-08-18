@@ -48,8 +48,8 @@ class StateTransitionTableExhaustionTest {
     }
 
     @Test
-    void tableDeclaresExactly23LegalTransitions() {
-        assertThat(LEGAL).hasSize(23);
+    void tableDeclaresExactly24LegalTransitions() {
+        assertThat(LEGAL).hasSize(24);
     }
 
     @Test

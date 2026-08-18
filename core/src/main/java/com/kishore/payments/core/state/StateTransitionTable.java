@@ -18,7 +18,7 @@ public final class StateTransitionTable {
     public record Transition(InstructionState from, InstructionState to) {
     }
 
-    private static final int EXPECTED_LEGAL_TRANSITION_COUNT = 23;
+    private static final int EXPECTED_LEGAL_TRANSITION_COUNT = 24;
 
     private static final Map<InstructionState, Set<InstructionState>> TABLE = buildTable();
     private static final Set<Transition> ALL_TRANSITIONS = buildAllTransitions();
@@ -87,6 +87,17 @@ public final class StateTransitionTable {
         // constraint. Re-entering at validation also means the repair is
         // itself re-validated.
         table.get(InstructionState.REPAIRED).add(InstructionState.VALIDATED);
+        // Added in Phase 8: exception-service transitions only as far as
+        // EXCEPTION -> REPAIRED itself (.notes/reports/PHASE-8-REPORT.md
+        // section 5) -- REPAIRED -> VALIDATED is ValidationConsumer's own
+        // re-validation, the same transition it already performs for a
+        // first-time RECEIVED -> VALIDATED delivery, triggered instead by
+        // payments.repaired. A repair that reintroduces the original defect
+        // (or a new one) fails that same re-validation, and the instruction
+        // has to be able to go straight from REPAIRED to EXCEPTION for that
+        // -- it never reaches VALIDATED at all in that case, so
+        // VALIDATED -> EXCEPTION alone does not cover it.
+        table.get(InstructionState.REPAIRED).add(InstructionState.EXCEPTION);
 
         table.get(InstructionState.INVESTIGATION).add(InstructionState.SENT);
         table.get(InstructionState.INVESTIGATION).add(InstructionState.EXCEPTION);

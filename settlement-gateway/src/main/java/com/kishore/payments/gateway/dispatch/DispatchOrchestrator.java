@@ -16,7 +16,7 @@ import com.kishore.payments.core.state.TransitionResult;
 import com.kishore.payments.gateway.GatewayMetrics;
 import com.kishore.payments.gateway.GatewayProperties;
 import com.kishore.payments.gateway.event.InstructionDispatchEvent;
-import com.kishore.payments.gateway.event.InstructionExceptionEvent;
+import com.kishore.payments.core.event.InstructionExceptionEvent;
 import com.kishore.payments.gateway.failure.BusinessFailureException;
 import com.kishore.payments.gateway.failure.FailureDetail;
 import java.time.Clock;

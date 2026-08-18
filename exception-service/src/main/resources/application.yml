@@ -1,0 +1,51 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: exception-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/payments?stringtype=unspecified
+    username: payments
+    password: payments
+  jpa:
+    open-in-view: false
+    hibernate:
+      # Flyway (core's migrations plus this service's own V2__exceptions_schema.sql)
+      # is the sole owner of the schema.
+      ddl-auto: none
+  flyway:
+    enabled: true
+
+payments:
+  kafka:
+    bootstrap-servers: localhost:29092
+    consumer-group: exception-service
+    exceptions-partitions: 6
+    dlq-topic: payments.dlq
+    dlq-partitions: 3
+  outbox:
+    batch-size: 100
+    known-topics: payments.repaired
+    retention: 7d
+    retention-batch-size: 1000
+  exceptions:
+    # .notes/reports/PHASE-8-REPORT.md section 5 has the reasoning behind
+    # three: cumulative across however many cases one instruction's repair
+    # lineage spans (a bad repair opens a new case, but the count carries
+    # forward -- see ExceptionCaseService), not reset per case.
+    max-repair-attempts: 3
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+      group:
+        readiness:
+          include: readinessState,db
