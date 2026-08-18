@@ -1,0 +1,80 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # GitHub-hosted ubuntu-latest runners ship Docker Engine pre-installed
+      # with the daemon already running (github.com/actions/runner-images),
+      # so Testcontainers can talk to it directly over the Docker socket to
+      # start its own Postgres/Redpanda containers per test class, exactly
+      # as it does locally. No `services:` block and no explicit daemon
+      # start needed here -- `services:` is for a container that runs
+      # alongside the job's steps for the job's whole duration, which is a
+      # different pattern from what Testcontainers does (it starts and
+      # tears down its own containers from inside the test JVM).
+
+      # Root-level `mvn clean verify`, deliberately never with `-pl`: a
+      # partial `-pl <module> -am` build never runs an upstream module's own
+      # `package` phase, which is exactly what hid Phase 6's real packaging
+      # bug -- rail-simulator's Spring Boot repackage execution silently
+      # overwrote the plain jar with an executable one that settlement-
+      # gateway (a test-scope dependency on rail-simulator) could not
+      # compile against, fixed with <classifier>exec</classifier> (see
+      # README's "Note: rail-simulator's packaged jar and why it has a
+      # classifier"). Only a full-reactor build exercises every module's
+      # own packaging the way this one does. If this step is ever changed
+      # to add `-pl` "to speed it up", that coverage is gone again,
+      # silently -- don't.
+      #
+      # No pre-verify Docker cleanup here, unlike the sequence documented
+      # in README ("Running the tests"): that step exists to guard against
+      # a stale Testcontainers/compose stack left over from an earlier
+      # local session on a machine that has been running this repo's tests
+      # for a while. A GitHub-hosted runner is a fresh VM for every job --
+      # there is no earlier session and nothing to clean up, so running it
+      # here would just be a no-op every time. Skipped deliberately, not
+      # forgotten.
+      #
+      # -B for non-interactive/log-friendly output. No -q (would hide which
+      # test failed) and no -DskipTests, ever.
+      - name: mvn clean verify (full reactor)
+        run: mvn -B clean verify
+
+      - name: Publish test results
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Maven test results
+          path: '**/target/surefire-reports/*.xml'
+          reporter: java-junit
+
+      - name: Upload surefire/failsafe reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            **/target/surefire-reports/
+            **/target/failsafe-reports/
+          if-no-files-found: warn
+          retention-days: 14

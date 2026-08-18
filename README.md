@@ -1,5 +1,7 @@
 # payment-instruction-service
 
+[![Build](https://github.com/kishoreqwerty/payment-instruction-service/actions/workflows/build.yml/badge.svg)](https://github.com/kishoreqwerty/payment-instruction-service/actions/workflows/build.yml)
+
 A payment instruction processing and exception handling service. It accepts ISO 20022 customer credit transfer initiations (`pain.001`), carries each instruction through validation, enrichment and routing, dispatches it to a clearing rail as `pacs.008`, correlates the returned `pacs.002`, and manages every instruction that fails through a structured repair and resubmission workflow. The interesting half is the exception path, not the happy path.
 
 ## Technology
