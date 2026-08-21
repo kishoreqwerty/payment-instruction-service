@@ -205,7 +205,7 @@ public abstract class AbstractExceptionServiceIntegrationTest {
                 instructionId, uetr, endToEndId, sequenceNo, occurredAt, stage, List.of(detail), InstructionExceptionEvent.CURRENT_VERSION);
         outboxWriter.write(new OutboxMessage(
                 instructionId, "payments.exceptions", instructionId.toString(),
-                OutboxHeaders.of("InstructionException", InstructionExceptionEvent.CURRENT_VERSION, occurredAt, null), event));
+                OutboxHeaders.of("InstructionException", InstructionExceptionEvent.CURRENT_VERSION, occurredAt), event));
         drainOutbox();
     }
 }

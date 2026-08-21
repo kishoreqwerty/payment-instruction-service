@@ -405,7 +405,7 @@ public class AmbiguityResolver {
                 instruction.getInstructionId(),
                 SETTLED_TOPIC,
                 instruction.getInstructionId().toString(),
-                OutboxHeaders.of("InstructionSettlement", InstructionSettlementEvent.CURRENT_VERSION, occurredAt, null),
+                OutboxHeaders.of("InstructionSettlement", InstructionSettlementEvent.CURRENT_VERSION, occurredAt),
                 event);
     }
 
@@ -424,7 +424,7 @@ public class AmbiguityResolver {
                 instruction.getInstructionId(),
                 EXCEPTIONS_TOPIC,
                 instruction.getInstructionId().toString(),
-                OutboxHeaders.of("InstructionException", InstructionExceptionEvent.CURRENT_VERSION, occurredAt, null),
+                OutboxHeaders.of("InstructionException", InstructionExceptionEvent.CURRENT_VERSION, occurredAt),
                 event);
     }
 
@@ -447,7 +447,7 @@ public class AmbiguityResolver {
                 instruction.getInstructionId(),
                 ROUTED_TOPIC,
                 instruction.getInstructionId().toString(),
-                OutboxHeaders.of("InstructionRouted", InstructionRoutedEvent.CURRENT_VERSION, occurredAt, null),
+                OutboxHeaders.of("InstructionRouted", InstructionRoutedEvent.CURRENT_VERSION, occurredAt),
                 event);
     }
 }

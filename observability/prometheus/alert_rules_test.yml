@@ -1,0 +1,131 @@
+# Phase 10 (.notes/reports/PHASE-10-REPORT.md section 5): one scenario per alert, each driving the
+# rule's condition and asserting it fires -- "an alert nobody has seen fire is a hypothesis," not a
+# verified rule. Run with: promtool test rules alert_rules_test.yml
+#
+# PromQL range selectors are exclusive of their start (t-range, t]: a range equal to this test's own
+# 1m sample interval only ever contains one sample, which increase()/rate()/delta() cannot compute a
+# result from. Every series below is built with that in mind -- ranges wide enough, and eval times
+# chosen with enough margin past each rule's own `for` duration, to give each function the samples
+# it actually needs.
+rule_files:
+  - alert_rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # PipelineStalled: payment_instructions_current{state="ROUTED"} rising continuously; delta(...[5m])
+  # first goes positive at t=5m and must stay positive for the rule's own `for: 5m`, so it fires at
+  # t=10m as long as the rise continues at least that far.
+  - interval: 1m
+    input_series:
+      - series: 'payment_instructions_current{state="ROUTED"}'
+        values: "0 2 4 6 8 10 12 14 16 18 20 22"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: PipelineStalled
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              state: ROUTED
+            exp_annotations:
+              summary: "Instructions are piling up at ROUTED"
+              description: "payment_instructions_current for state=ROUTED has been rising for 5 minutes -- the gateway is not draining what routing hands it."
+
+  # ExceptionRateSpike: a near-flat baseline for the first 60 minutes (one case every 20m), then a
+  # sustained burst of +5/min from t=61m on. The 5m rate first clears 3x the 1h baseline a couple of
+  # minutes into the burst; evaluating at t=70m -- well past that plus the rule's own `for: 5m` --
+  # gives it comfortable margin.
+  - interval: 1m
+    input_series:
+      - series: 'payment_exception_cases_opened_total{stage="VALIDATION",reason_code="AC01",repairability="AUTO_REPAIRABLE"}'
+        values: "0+0x19 1+0x19 2+0x19 3 8+5x19"
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: ExceptionRateSpike
+        exp_alerts:
+          - exp_labels:
+              severity: page
+            exp_annotations:
+              summary: "Exception case rate is more than 3x its trailing 1h baseline"
+              description: "Sender changed something, or reference data broke -- opened-case rate is well above its own recent normal."
+
+  # DispatchAmbiguity: fires as soon as the counter moves, no sustained `for`. The 2m range gives
+  # increase() two samples to work with at eval_time=2m: the pre-jump sample at t=1m and the
+  # post-jump sample at t=2m (t=0m falls outside the (0m,2m] window).
+  - interval: 1m
+    input_series:
+      - series: 'payment_dispatch_ambiguous_total{rail="FEDWIRE"}'
+        values: "0 0 1"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: DispatchAmbiguity
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              rail: FEDWIRE
+            exp_annotations:
+              summary: "A dispatch came back ambiguous"
+              description: "payment_dispatch_ambiguous_total incremented for rail FEDWIRE -- needs human awareness immediately, not batched into a digest."
+
+  # DlqNonEmpty: same shape and same reasoning as DispatchAmbiguity above.
+  - interval: 1m
+    input_series:
+      - series: 'payment_dlq_messages_total'
+        values: "0 0 1"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: DlqNonEmpty
+        exp_alerts:
+          - exp_labels:
+              severity: page
+            exp_annotations:
+              summary: "A message landed in payments.dlq"
+              description: "Unanticipated failure class -- nothing consumes payments.dlq automatically, so this arrival is the only signal a human gets."
+
+  # ConsumerLagGrowth: lag climbing steadily on one partition for 10m+ straight.
+  - interval: 1m
+    input_series:
+      - series: 'kafka_consumer_fetch_manager_records_lag{topic="payments_validated",partition="0"}'
+        values: "0 10 20 30 40 50 60 70 80 90 100 100"
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: ConsumerLagGrowth
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              topic: payments_validated
+              partition: "0"
+            exp_annotations:
+              summary: "Consumer lag is growing on payments_validated"
+              description: "Lag on payments_validated partition 0 has had a positive derivative for 10 minutes -- a capacity problem or a poison message."
+
+  # OutboxStalled: oldest-pending gauge crosses 60s and stays there past the rule's `for: 1m`.
+  - interval: 1m
+    input_series:
+      - series: 'payment_outbox_oldest_pending_seconds{topic="payments.validated"}'
+        values: "0 5 90 95"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: OutboxStalled
+        exp_alerts:
+          - exp_labels:
+              topic: payments.validated
+              severity: page
+            exp_annotations:
+              summary: "Outbox publisher stuck on payments.validated"
+              description: "The oldest pending outbox row for payments.validated has been waiting more than 60 seconds -- the publisher is stuck and every instruction behind it is frozen."
+
+  # InvestigationAccumulating: gauge rising steadily for 30m straight.
+  - interval: 1m
+    input_series:
+      - series: 'payment_investigation_open'
+        values: "0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31"
+    alert_rule_test:
+      - eval_time: 31m
+        alertname: InvestigationAccumulating
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+            exp_annotations:
+              summary: "Open investigations are accumulating"
+              description: "payment_investigation_open has been rising for 30 minutes -- payments needing a human are piling up faster than they're being resolved."

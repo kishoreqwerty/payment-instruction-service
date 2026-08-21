@@ -110,6 +110,15 @@ class PaymentCoreAutoConfigurationTest {
             return OutboxProducerFactory.create(env.getRequiredProperty("bootstrap-servers-for-test"));
         }
 
+        // A real service always has one of these via spring-boot-starter-actuator; this minimal
+        // host deliberately has no starters at all (see class javadoc), so it needs its own, the
+        // same reason it supplies OutboxMetrics below rather than relying on autoconfiguration for
+        // either -- InstructionStateMetrics (Phase 10) now depends on one too.
+        @Bean
+        io.micrometer.core.instrument.MeterRegistry meterRegistry() {
+            return new SimpleMeterRegistry();
+        }
+
         @Bean
         OutboxMetrics outboxMetrics() {
             return new OutboxMetrics(new SimpleMeterRegistry(), List.of("payments.received"));

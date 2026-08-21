@@ -1,6 +1,9 @@
 package com.kishore.payments.core.outbox;
 
 import com.kishore.payments.core.event.EventJson;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
+import io.micrometer.tracing.propagation.Propagator;
 import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
 import java.time.Duration;
@@ -20,6 +23,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.lang.Nullable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -93,6 +97,8 @@ public class OutboxPublisher {
     private final JdbcTemplate jdbc;
     private final Producer<String, String> producer;
     private final OutboxMetrics metrics;
+    private final Tracer tracer;
+    private final Propagator propagator;
     private final int batchSize;
     private final List<String> knownTopics;
     private final TransactionTemplate transactionTemplate;
@@ -102,11 +108,15 @@ public class OutboxPublisher {
             Producer<String, String> producer,
             OutboxMetrics metrics,
             PlatformTransactionManager transactionManager,
+            @Nullable Tracer tracer,
+            @Nullable Propagator propagator,
             @Value("${payments.outbox.batch-size:100}") int batchSize,
             @Value("${payments.outbox.known-topics:payments.received}") List<String> knownTopics) {
         this.jdbc = jdbc;
         this.producer = producer;
         this.metrics = metrics;
+        this.tracer = tracer;
+        this.propagator = propagator;
         this.batchSize = batchSize;
         this.knownTopics = knownTopics;
         // A TransactionTemplate managed explicitly here, rather than
@@ -134,13 +144,20 @@ public class OutboxPublisher {
             List<PendingSend> sends = new ArrayList<>(batch.size());
             for (OutboxRow row : batch) {
                 Instant started = Instant.now();
+                // A new span, "outbox.publish", as a child of whatever trace was captured into this
+                // row at write time (OutboxWriter) -- not just re-forwarding that old header
+                // unchanged. This is what makes the write and the publish show up as two connected
+                // spans in the same trace, rather than the publish looking like it happened in a
+                // vacuum: see this class's own javadoc and .notes/reports/PHASE-10-REPORT.md §3.
+                Map<String, Object> headers = parseHeaders(row.headersJson());
+                Span publishSpan = startPublishSpan(row, headers);
                 Future<RecordMetadata> future;
                 try {
-                    future = producer.send(toProducerRecord(row));
+                    future = producer.send(toProducerRecord(row, headers, publishSpan));
                 } catch (Exception e) {
                     future = CompletableFuture.failedFuture(e);
                 }
-                sends.add(new PendingSend(row, started, future));
+                sends.add(new PendingSend(row, started, future, publishSpan));
             }
 
             // Then block once, in the same order, to learn the outcomes and
@@ -151,6 +168,7 @@ public class OutboxPublisher {
                     jdbc.update(MARK_PUBLISHED_SQL, send.row().outboxId());
                     metrics.recordPublished(send.row().topic(), true);
                     metrics.recordPublishDuration(Duration.between(send.started(), Instant.now()));
+                    endSpan(send.span(), null);
                 } catch (Exception e) {
                     // Leave published_at null and stop here for this cycle:
                     // the remaining rows in this batch (including this one)
@@ -160,6 +178,7 @@ public class OutboxPublisher {
                     // a stuck instruction and should stay visible as one.
                     metrics.recordPublished(send.row().topic(), false);
                     log.warn("Failed to publish outbox row {} to topic {}", send.row().outboxId(), send.row().topic(), e);
+                    endSpan(send.span(), e);
                     break;
                 }
             }
@@ -168,10 +187,69 @@ public class OutboxPublisher {
         });
     }
 
-    private static ProducerRecord<String, String> toProducerRecord(OutboxRow row) {
+    /**
+     * Extracts the {@code traceparent} captured at write time (see {@link
+     * OutboxWriter}) and starts a new child span for the act of publishing
+     * this specific row, tagged with the instruction it belongs to. Returns
+     * {@code null} -- meaning "nothing to attach, forward headers as
+     * stored" -- when there is no tracing bridge on this service's
+     * classpath, or the row has no captured trace context at all (written
+     * before this feature existed, or by a caller with no active span).
+     */
+    @Nullable
+    private Span startPublishSpan(OutboxRow row, Map<String, Object> headers) {
+        if (tracer == null || propagator == null) {
+            return null;
+        }
+        Object storedTraceparent = headers.get("traceparent");
+        if (storedTraceparent == null) {
+            return null;
+        }
+        Map<String, String> carrier = Map.of("traceparent", String.valueOf(storedTraceparent));
+        // The Span.Builder Propagator#extract returns is already parented on the extracted remote
+        // context -- this is the builder for the new span, not a separate context to hand to a
+        // second builder.
+        Span.Builder builder = propagator.extract(carrier, Map::get);
+        return builder.name("outbox.publish")
+                .tag("instruction_id", String.valueOf(row.aggregateId()))
+                .tag("topic", row.topic())
+                .start();
+    }
+
+    private void endSpan(@Nullable Span span, @Nullable Exception error) {
+        if (span == null) {
+            return;
+        }
+        if (error != null) {
+            span.error(error);
+        }
+        span.end();
+    }
+
+    private ProducerRecord<String, String> toProducerRecord(OutboxRow row, Map<String, Object> headers, @Nullable Span publishSpan) {
         ProducerRecord<String, String> record = new ProducerRecord<>(row.topic(), row.partitionKey(), row.payload());
-        for (Map.Entry<String, Object> header : parseHeaders(row.headersJson()).entrySet()) {
+        for (Map.Entry<String, Object> header : headers.entrySet()) {
+            if (header.getKey().equals("traceparent")) {
+                continue;
+            }
             record.headers().add(header.getKey(), String.valueOf(header.getValue()).getBytes(StandardCharsets.UTF_8));
+        }
+        // The publish span's own context, not the stored one unchanged: a consumer reading this
+        // record becomes a child of "outbox.publish", which is itself a child of the span that
+        // wrote the row -- a real chain, not a flat re-broadcast of the original traceparent to
+        // every hop downstream regardless of how many outbox round-trips happened in between.
+        if (publishSpan != null && tracer != null && propagator != null) {
+            Map<String, String> carrier = new HashMap<>();
+            propagator.inject(publishSpan.context(), carrier, Map::put);
+            String traceparent = carrier.get("traceparent");
+            if (traceparent != null) {
+                record.headers().add("traceparent", traceparent.getBytes(StandardCharsets.UTF_8));
+            }
+        } else if (headers.get("traceparent") != null) {
+            // No tracer on this classpath (or no captured context): fall back to forwarding
+            // whatever was stored, unchanged, rather than dropping it -- still better than nothing
+            // for a service that isn't itself instrumented but sits between two that are.
+            record.headers().add("traceparent", String.valueOf(headers.get("traceparent")).getBytes(StandardCharsets.UTF_8));
         }
         return record;
     }
@@ -206,6 +284,6 @@ public class OutboxPublisher {
     private record OutboxRow(long outboxId, UUID aggregateId, String topic, String partitionKey, String headersJson, String payload) {
     }
 
-    private record PendingSend(OutboxRow row, Instant started, Future<RecordMetadata> future) {
+    private record PendingSend(OutboxRow row, Instant started, Future<RecordMetadata> future, @Nullable Span span) {
     }
 }

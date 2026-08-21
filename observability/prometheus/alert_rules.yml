@@ -1,0 +1,68 @@
+# Phase 10 (.notes/reports/PHASE-10-REPORT.md section 5; the reasoning behind each condition is
+# also .notes/ARCHITECTURE.md section 9.3's own table). Tested with `promtool test rules
+# alert_rules_test.yml` against alert_rules_test.yml in this directory.
+groups:
+  - name: payments
+    rules:
+      - alert: PipelineStalled
+        expr: delta(payment_instructions_current{state="ROUTED"}[5m]) > 0
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "Instructions are piling up at ROUTED"
+          description: "payment_instructions_current for state={{ $labels.state }} has been rising for 5 minutes -- the gateway is not draining what routing hands it."
+
+      - alert: ExceptionRateSpike
+        expr: sum(rate(payment_exception_cases_opened_total[5m])) > 3 * sum(rate(payment_exception_cases_opened_total[1h]))
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "Exception case rate is more than 3x its trailing 1h baseline"
+          description: "Sender changed something, or reference data broke -- opened-case rate is well above its own recent normal."
+
+      - alert: DispatchAmbiguity
+        expr: increase(payment_dispatch_ambiguous_total[2m]) > 0
+        for: 0m
+        labels:
+          severity: page
+        annotations:
+          summary: "A dispatch came back ambiguous"
+          description: "payment_dispatch_ambiguous_total incremented for rail {{ $labels.rail }} -- needs human awareness immediately, not batched into a digest."
+
+      - alert: DlqNonEmpty
+        expr: increase(payment_dlq_messages_total[2m]) > 0
+        for: 0m
+        labels:
+          severity: page
+        annotations:
+          summary: "A message landed in payments.dlq"
+          description: "Unanticipated failure class -- nothing consumes payments.dlq automatically, so this arrival is the only signal a human gets."
+
+      - alert: ConsumerLagGrowth
+        expr: deriv(kafka_consumer_fetch_manager_records_lag[10m]) > 0
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: "Consumer lag is growing on {{ $labels.topic }}"
+          description: "Lag on {{ $labels.topic }} partition {{ $labels.partition }} has had a positive derivative for 10 minutes -- a capacity problem or a poison message."
+
+      - alert: OutboxStalled
+        expr: payment_outbox_oldest_pending_seconds > 60
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: "Outbox publisher stuck on {{ $labels.topic }}"
+          description: "The oldest pending outbox row for {{ $labels.topic }} has been waiting more than 60 seconds -- the publisher is stuck and every instruction behind it is frozen."
+
+      - alert: InvestigationAccumulating
+        expr: delta(payment_investigation_open[30m]) > 0
+        for: 30m
+        labels:
+          severity: warn
+        annotations:
+          summary: "Open investigations are accumulating"
+          description: "payment_investigation_open has been rising for 30 minutes -- payments needing a human are piling up faster than they're being resolved."

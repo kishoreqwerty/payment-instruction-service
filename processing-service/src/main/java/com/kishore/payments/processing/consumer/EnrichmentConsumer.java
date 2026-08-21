@@ -124,7 +124,7 @@ public class EnrichmentConsumer {
                 instruction.getInstructionId(),
                 ENRICHED_TOPIC,
                 instruction.getInstructionId().toString(),
-                OutboxHeaders.of("InstructionEnriched", InstructionStageEvent.CURRENT_VERSION, occurredAt, null),
+                OutboxHeaders.of("InstructionEnriched", InstructionStageEvent.CURRENT_VERSION, occurredAt),
                 event);
     }
 
@@ -145,7 +145,7 @@ public class EnrichmentConsumer {
                 instruction.getInstructionId(),
                 EXCEPTIONS_TOPIC,
                 instruction.getInstructionId().toString(),
-                OutboxHeaders.of("InstructionException", InstructionExceptionEvent.CURRENT_VERSION, occurredAt, null),
+                OutboxHeaders.of("InstructionException", InstructionExceptionEvent.CURRENT_VERSION, occurredAt),
                 event);
     }
 

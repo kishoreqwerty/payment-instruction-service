@@ -44,7 +44,11 @@ public class SecurityConfig {
         http.csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
+                        // /actuator/prometheus (Phase 10): same treatment as health/info -- an
+                        // internal monitoring endpoint a scrape target has to reach without
+                        // per-target credentials, not something this service's own maker-checker
+                        // access model is meant to gate.
+                        .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info", "/actuator/prometheus").permitAll()
                         .anyRequest().authenticated())
                 .httpBasic(basic -> basic.authenticationEntryPoint(entryPoints))
                 .exceptionHandling(handling -> handling.accessDeniedHandler(entryPoints))

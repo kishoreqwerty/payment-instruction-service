@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <conversionRule conversionWord="masked"
+                     converterClass="com.kishore.payments.railsim.logging.SensitiveFieldMaskingConverter" />
+
+    <!-- Phase 10 (.notes/reports/PHASE-10-REPORT.md section 6): JSON to stdout, the follow-up
+         Phase 2's own version of this file named and deferred. trace_id/span_id come from MDC keys
+         micrometer-tracing's OTel bridge populates for the lifetime of the current span (traceId/
+         spanId, camelCase: Micrometer's own convention), renamed to this project's snake_case
+         field-naming convention here rather than left as-is. instruction_id comes from the MDC
+         InstructionStateWriter populates for the duration of a transition. All three are emitted
+         via an explicit pattern provider (not the generic mdc provider) so the field names are
+         exactly these regardless of what Micrometer calls its own MDC keys; the generic mdc
+         provider below still covers any other ad-hoc MDC key a call site sets, with these three
+         excluded from it to avoid emitting each one twice. %masked (not %msg) is what makes every
+         line, structured or not, go through SensitiveFieldMaskingConverter. -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+            <providers>
+                <timestamp/>
+                <logLevel/>
+                <loggerName/>
+                <threadName/>
+                <pattern>
+                    <pattern>
+                        {
+                          "message": "%masked",
+                          "trace_id": "%X{traceId:-}",
+                          "span_id": "%X{spanId:-}",
+                          "instruction_id": "%X{instruction_id:-}"
+                        }
+                    </pattern>
+                </pattern>
+                <mdc>
+                    <excludeMdcKeyName>traceId</excludeMdcKeyName>
+                    <excludeMdcKeyName>spanId</excludeMdcKeyName>
+                    <excludeMdcKeyName>instruction_id</excludeMdcKeyName>
+                </mdc>
+                <stackTrace/>
+            </providers>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE" />
+    </root>
+</configuration>

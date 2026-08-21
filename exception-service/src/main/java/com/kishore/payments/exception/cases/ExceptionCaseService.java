@@ -444,7 +444,7 @@ public class ExceptionCaseService {
                 instruction.getInstructionId(),
                 REPAIRED_TOPIC,
                 instruction.getInstructionId().toString(),
-                OutboxHeaders.of("InstructionRepaired", InstructionRepairedEvent.CURRENT_VERSION, occurredAt, null),
+                OutboxHeaders.of("InstructionRepaired", InstructionRepairedEvent.CURRENT_VERSION, occurredAt),
                 event);
     }
 

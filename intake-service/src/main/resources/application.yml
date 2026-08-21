@@ -74,7 +74,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       probes:
@@ -83,6 +83,15 @@ management:
       group:
         readiness:
           include: readinessState,db
+  tracing:
+    sampling:
+      # 100% locally: see .notes/reports/PHASE-10-REPORT.md section 5 for
+      # what would change under real production volume.
+      probability: 1.0
+  otlp:
+    tracing:
+      # Jaeger's own OTLP HTTP receiver, per docker-compose.yml.
+      endpoint: http://localhost:4318/v1/traces
 
 server:
   port: 8081

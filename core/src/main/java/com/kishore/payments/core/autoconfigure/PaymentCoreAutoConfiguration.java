@@ -6,9 +6,13 @@ import com.kishore.payments.core.outbox.OutboxMetrics;
 import com.kishore.payments.core.outbox.OutboxPublisher;
 import com.kishore.payments.core.outbox.OutboxRetentionCleaner;
 import com.kishore.payments.core.outbox.OutboxWriter;
+import com.kishore.payments.core.state.InstructionStateMetrics;
 import com.kishore.payments.core.state.InstructionStateWriter;
 import com.kishore.payments.core.state.StateMachine;
 import com.kishore.payments.core.state.StateTransitionTable;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.tracing.Tracer;
+import io.micrometer.tracing.propagation.Propagator;
 import java.time.Duration;
 import java.util.List;
 import org.apache.kafka.clients.producer.Producer;
@@ -21,6 +25,7 @@ import org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfigurat
 import org.springframework.context.annotation.Bean;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.lang.Nullable;
 import org.springframework.transaction.PlatformTransactionManager;
 
 /**
@@ -73,8 +78,8 @@ public class PaymentCoreAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public OutboxWriter outboxWriter(JdbcTemplate jdbc) {
-        return new OutboxWriter(jdbc);
+    public OutboxWriter outboxWriter(JdbcTemplate jdbc, @Nullable Tracer tracer, @Nullable Propagator propagator) {
+        return new OutboxWriter(jdbc, tracer, propagator);
     }
 
     @Bean
@@ -84,16 +89,25 @@ public class PaymentCoreAutoConfiguration {
             Producer<String, String> producer,
             OutboxMetrics metrics,
             PlatformTransactionManager transactionManager,
+            @Nullable Tracer tracer,
+            @Nullable Propagator propagator,
             @Value("${payments.outbox.batch-size:100}") int batchSize,
             @Value("${payments.outbox.known-topics:payments.received}") List<String> knownTopics) {
-        return new OutboxPublisher(jdbc, producer, metrics, transactionManager, batchSize, knownTopics);
+        return new OutboxPublisher(jdbc, producer, metrics, transactionManager, tracer, propagator, batchSize, knownTopics);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public InstructionStateMetrics instructionStateMetrics(MeterRegistry registry, StateTransitionTable stateTransitionTable) {
+        return new InstructionStateMetrics(registry, stateTransitionTable);
     }
 
     @Bean
     @ConditionalOnMissingBean
     public InstructionStateWriter instructionStateWriter(
-            PaymentInstructionRepository instructions, InstructionEventRepository events, StateMachine stateMachine) {
-        return new InstructionStateWriter(instructions, events, stateMachine);
+            PaymentInstructionRepository instructions, InstructionEventRepository events, StateMachine stateMachine,
+            InstructionStateMetrics instructionStateMetrics, @Nullable Tracer tracer) {
+        return new InstructionStateWriter(instructions, events, stateMachine, instructionStateMetrics, tracer);
     }
 
     @Bean

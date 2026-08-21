@@ -1,4 +1,4 @@
-package com.kishore.payments.intake.logging;
+package com.kishore.payments.core.logging;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

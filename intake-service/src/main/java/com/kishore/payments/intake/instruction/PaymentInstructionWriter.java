@@ -81,7 +81,7 @@ public class PaymentInstructionWriter {
                 entity.getInstructionId(),
                 TOPIC,
                 entity.getInstructionId().toString(),
-                OutboxHeaders.of("InstructionReceived", InstructionReceivedEvent.CURRENT_VERSION, occurredAt, null),
+                OutboxHeaders.of("InstructionReceived", InstructionReceivedEvent.CURRENT_VERSION, occurredAt),
                 event));
     }
 

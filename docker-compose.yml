@@ -81,5 +81,49 @@ services:
     ports:
       - "8090:8080"
 
+  # Phase 10. Receives traces over OTLP HTTP (:4318) from every service -- see each
+  # service's application.yml (management.otlp.tracing.endpoint). COLLECTOR_OTLP_ENABLED is
+  # explicit rather than relied-upon-by-default since it varies by Jaeger version.
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686" # UI
+      - "4317:4317" # OTLP gRPC (unused here, exposed for completeness)
+      - "4318:4318" # OTLP HTTP -- what every service is actually configured to send to
+
+  # Phase 10. Scrapes every service's /actuator/prometheus over host.docker.internal, since
+  # the services themselves run on the host (see the redpanda service's own comment on the
+  # internal/external listener split -- the whole stack follows that same shape: infra in
+  # Compose, services via `mvn spring-boot:run` on the host). Also evaluates
+  # observability/prometheus/alert_rules.yml.
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+    ports:
+      - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Phase 10. Provisioned as code, not clicked together: the datasource and all three
+  # dashboards are version-controlled JSON under observability/grafana, mounted read-only and
+  # loaded by Grafana's own provisioning mechanism on startup.
+  grafana:
+    image: grafana/grafana:11.1.0
+    depends_on:
+      - prometheus
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+
 volumes:
   postgres-data:

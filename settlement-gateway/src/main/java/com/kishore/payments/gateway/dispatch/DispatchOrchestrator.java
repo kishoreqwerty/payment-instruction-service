@@ -266,7 +266,7 @@ public class DispatchOrchestrator {
                 instruction.getInstructionId(),
                 SENT_TOPIC,
                 instruction.getInstructionId().toString(),
-                OutboxHeaders.of("InstructionDispatch", InstructionDispatchEvent.CURRENT_VERSION, occurredAt, null),
+                OutboxHeaders.of("InstructionDispatch", InstructionDispatchEvent.CURRENT_VERSION, occurredAt),
                 event);
     }
 
@@ -285,7 +285,7 @@ public class DispatchOrchestrator {
                 instruction.getInstructionId(),
                 EXCEPTIONS_TOPIC,
                 instruction.getInstructionId().toString(),
-                OutboxHeaders.of("InstructionException", InstructionExceptionEvent.CURRENT_VERSION, occurredAt, null),
+                OutboxHeaders.of("InstructionException", InstructionExceptionEvent.CURRENT_VERSION, occurredAt),
                 event);
     }
 

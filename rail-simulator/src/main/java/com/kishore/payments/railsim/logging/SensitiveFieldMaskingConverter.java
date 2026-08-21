@@ -1,4 +1,4 @@
-package com.kishore.payments.intake.logging;
+package com.kishore.payments.railsim.logging;
 
 import ch.qos.logback.classic.pattern.ClassicConverter;
 import ch.qos.logback.classic.spi.ILoggingEvent;
@@ -10,6 +10,13 @@ import java.util.regex.Pattern;
  * runs in the rendered log message down to their last four digits. Registered
  * once in logback-spring.xml so masking applies to every log line rather than
  * relying on call-site discipline.
+ *
+ * <p>This module's own copy, not a shared dependency on {@code core}'s
+ * identical class (Phase 10, .notes/reports/PHASE-10-REPORT.md section 6):
+ * rail-simulator deliberately carries no dependency on core (see this
+ * module's own pom.xml), and one small, independently-tested duplication is
+ * a better boundary here than pulling in outbox/instruction-state machinery
+ * this simulator has no use for, just to share a logging utility.
  */
 public class SensitiveFieldMaskingConverter extends ClassicConverter {
 

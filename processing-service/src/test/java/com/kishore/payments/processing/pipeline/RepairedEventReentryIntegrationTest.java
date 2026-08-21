@@ -97,6 +97,6 @@ class RepairedEventReentryIntegrationTest extends AbstractProcessingIntegrationT
                 occurredAt, InstructionRepairedEvent.CURRENT_VERSION);
         outboxWriter.write(new OutboxMessage(
                 instruction.getInstructionId(), "payments.repaired", instruction.getInstructionId().toString(),
-                OutboxHeaders.of("InstructionRepaired", InstructionRepairedEvent.CURRENT_VERSION, occurredAt, null), event));
+                OutboxHeaders.of("InstructionRepaired", InstructionRepairedEvent.CURRENT_VERSION, occurredAt), event));
     }
 }

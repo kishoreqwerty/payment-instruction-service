@@ -35,6 +35,27 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
+    <!-- Phase 10 (.notes/reports/PHASE-10-REPORT.md section 3): the OTel bridge for
+         Micrometer Tracing (core already carries the vendor-neutral
+         Tracer/Propagator API, see core/pom.xml) plus an OTLP exporter so
+         spans reach Jaeger, which speaks OTLP natively. Both auto-configured
+         by spring-boot-starter-actuator once present; no explicit
+         @Configuration needed. -->
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-tracing-bridge-otel</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-exporter-otlp</artifactId>
+    </dependency>
+    <!-- Phase 10: nothing scrapes this service's metrics without it: Prometheus
+         needs /actuator/prometheus, which spring-boot-starter-actuator alone does
+         not expose; this is the registry that renders it. -->
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-registry-prometheus</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-data-jpa</artifactId>

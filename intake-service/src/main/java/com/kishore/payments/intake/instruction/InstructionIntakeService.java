@@ -31,19 +31,26 @@ public class InstructionIntakeService {
     private final Pain001Validator validator;
     private final Pain001MessageParser parser;
     private final PaymentInstructionWriter writer;
+    private final IntakeMetrics metrics;
 
     public InstructionIntakeService(
             RawMessageService rawMessageService,
             Pain001Validator validator,
             Pain001MessageParser parser,
-            PaymentInstructionWriter writer) {
+            PaymentInstructionWriter writer,
+            IntakeMetrics metrics) {
         this.rawMessageService = rawMessageService;
         this.validator = validator;
         this.parser = parser;
         this.writer = writer;
+        this.metrics = metrics;
     }
 
     public IntakeOutcome receive(byte[] payload, String sourceChannel, String sourceIdentifier, String contentType) {
+        // Counted here, before validation/parsing: "received" means an intake attempt arrived on
+        // this channel, the same moment raw_message is persisted below, regardless of what this
+        // service later decides about it -- malformed, schema-invalid, a duplicate, all still count.
+        metrics.recordReceived(sourceChannel);
         RawMessageEntity raw = rawMessageService.persist(payload, sourceChannel, sourceIdentifier, contentType);
 
         Pain001Validator.ValidationResult validation = validator.validate(payload);

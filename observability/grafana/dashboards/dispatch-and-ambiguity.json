@@ -1,0 +1,97 @@
+{
+  "uid": "payments-dispatch-ambiguity",
+  "title": "Dispatch and Ambiguity",
+  "description": "Payments engineer view: is dispatch to the rails healthy, and is anything ambiguous or stuck waiting on reconciliation.",
+  "tags": ["payments"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Dispatch outcomes by rail",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (rail, outcome) (rate(payment_dispatch_outcome_total[5m]))",
+          "legendFormat": "{{rail}} - {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Dispatch latency, p95 by rail",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.95, sum by (le, rail) (rate(payment_dispatch_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{rail}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Ambiguity resolutions by outcome",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "How an ambiguous dispatch was eventually resolved -- distinct from payment_dispatch_ambiguous_total, which is the moment dispatch first came back ambiguous.",
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (rail, resolution) (rate(payment_ambiguity_resolution_total[15m]))",
+          "legendFormat": "{{rail}} - {{resolution}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Redispatch count",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (rail) (increase(payment_redispatch_total[1h]))",
+          "legendFormat": "{{rail}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Open investigations",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "The dashboard panel that would page someone: an ambiguous dispatch nobody has resolved yet.",
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "payment_investigation_open",
+          "legendFormat": "open"
+        }
+      ]
+    }
+  ]
+}

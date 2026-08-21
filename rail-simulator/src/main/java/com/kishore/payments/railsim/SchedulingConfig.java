@@ -6,6 +6,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 
 /**
@@ -44,5 +45,23 @@ public class SchedulingConfig {
     @Bean
     public RestTemplate railCallbackRestTemplate(RestTemplateBuilder builder) {
         return builder.setConnectTimeout(Duration.ofSeconds(2)).setReadTimeout(Duration.ofSeconds(5)).build();
+    }
+
+    /**
+     * Replaces Boot's auto-configured {@link RestTemplateBuilder} with one pinned to the
+     * JDK-backed {@link SimpleClientHttpRequestFactory} (Phase 10): Micrometer Tracing's OTLP
+     * exporter pulls in OkHttp as a transitive runtime dependency for its own trace-export calls,
+     * and without this, Boot's classpath auto-detection would silently switch every {@code
+     * RestTemplate} built from the default builder -- including this class's own {@link
+     * #railCallbackRestTemplate} and, in tests, {@code TestRestTemplate} -- to OkHttp, which
+     * retries once on a connection failure by default. That is exactly the behavior {@code
+     * ConnectionDropper}'s DROP scenario exists to defeat: a forcibly reset connection would be
+     * silently retried and succeed, so a test asserting the client sees the drop as a raw
+     * transport failure would stop seeing one. See {@code DispatchConfig#railRestTemplate} in
+     * settlement-gateway for the same fix on the other side of this simulator's HTTP surface.
+     */
+    @Bean
+    public RestTemplateBuilder restTemplateBuilder() {
+        return new RestTemplateBuilder().requestFactory(SimpleClientHttpRequestFactory::new);
     }
 }

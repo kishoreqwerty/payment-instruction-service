@@ -121,7 +121,7 @@ public class RoutingConsumer {
                 instruction.getInstructionId(),
                 ROUTED_TOPIC,
                 instruction.getInstructionId().toString(),
-                OutboxHeaders.of("InstructionRouted", InstructionRoutedEvent.CURRENT_VERSION, occurredAt, null),
+                OutboxHeaders.of("InstructionRouted", InstructionRoutedEvent.CURRENT_VERSION, occurredAt),
                 event);
     }
 
@@ -142,7 +142,7 @@ public class RoutingConsumer {
                 instruction.getInstructionId(),
                 EXCEPTIONS_TOPIC,
                 instruction.getInstructionId().toString(),
-                OutboxHeaders.of("InstructionException", InstructionExceptionEvent.CURRENT_VERSION, occurredAt, null),
+                OutboxHeaders.of("InstructionException", InstructionExceptionEvent.CURRENT_VERSION, occurredAt),
                 event);
     }
 

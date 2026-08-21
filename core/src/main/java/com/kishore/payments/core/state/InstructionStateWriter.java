@@ -5,10 +5,15 @@ import com.kishore.payments.core.instruction.InstructionEventEntity;
 import com.kishore.payments.core.instruction.InstructionEventRepository;
 import com.kishore.payments.core.instruction.PaymentInstructionEntity;
 import com.kishore.payments.core.instruction.PaymentInstructionRepository;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.NoSuchElementException;
 import java.util.UUID;
+import org.slf4j.MDC;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.lang.Nullable;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -46,12 +51,17 @@ public class InstructionStateWriter {
     private final PaymentInstructionRepository instructions;
     private final InstructionEventRepository events;
     private final StateMachine stateMachine;
+    private final InstructionStateMetrics metrics;
+    private final Tracer tracer;
 
     public InstructionStateWriter(
-            PaymentInstructionRepository instructions, InstructionEventRepository events, StateMachine stateMachine) {
+            PaymentInstructionRepository instructions, InstructionEventRepository events, StateMachine stateMachine,
+            InstructionStateMetrics metrics, @Nullable Tracer tracer) {
         this.instructions = instructions;
         this.events = events;
         this.stateMachine = stateMachine;
+        this.metrics = metrics;
+        this.tracer = tracer;
     }
 
     @Transactional
@@ -60,6 +70,42 @@ public class InstructionStateWriter {
         PaymentInstructionEntity entity = instructions
                 .findById(instructionId)
                 .orElseThrow(() -> new NoSuchElementException("No payment instruction: " + instructionId));
+
+        // instruction_id in the MDC for the duration of this transition, so every log line this
+        // call produces (including framework/SQL logging) carries it -- restored to whatever it
+        // was before on the way out, in case a caller is already inside its own MDC scope (a
+        // Kafka listener wrapping several transitions in one message's processing, say).
+        String previousMdcInstructionId = MDC.get("instruction_id");
+        MDC.put("instruction_id", instructionId.toString());
+        try {
+            return doTransition(instructionId, entity, to, actorType, actorId, reasonCode, reasonDetail);
+        } finally {
+            if (previousMdcInstructionId != null) {
+                MDC.put("instruction_id", previousMdcInstructionId);
+            } else {
+                MDC.remove("instruction_id");
+            }
+        }
+    }
+
+    private TransitionResult doTransition(
+            UUID instructionId, PaymentInstructionEntity entity, InstructionState to, ActorType actorType, String actorId,
+            String reasonCode, String reasonDetail) {
+        // Tags the span this transition executes under (the enclosing HTTP request or Kafka
+        // listener span, given container/web observation is enabled) with the two identifiers a
+        // trace should be findable by, per the phase brief: instruction_id (this service's own
+        // primary key) and uetr (the cross-system identifier a payments engineer would actually
+        // have to hand). Tagged here rather than at the HTTP/Kafka entry point because this is
+        // the one place both identifiers are reliably in scope for every transition anywhere.
+        if (tracer != null) {
+            Span current = tracer.currentSpan();
+            if (current != null) {
+                current.tag("instruction_id", instructionId.toString());
+                if (entity.getUetr() != null) {
+                    current.tag("uetr", entity.getUetr().toString());
+                }
+            }
+        }
 
         InstructionState from = entity.getState();
         TransitionContext ctx = new TransitionContext(actorType, actorId, reasonCode, reasonDetail, entity.getStateVersion());
@@ -92,8 +138,13 @@ public class InstructionStateWriter {
             throw e;
         }
 
+        // Captured before the overwrite below: updated_at, as loaded, is exactly the timestamp of
+        // the transition that put this instruction into `from` -- the moment this stage began.
+        OffsetDateTime stageEnteredAt = entity.getUpdatedAt();
+        OffsetDateTime now = OffsetDateTime.now();
+
         entity.setState(to);
-        entity.setUpdatedAt(OffsetDateTime.now());
+        entity.setUpdatedAt(now);
         try {
             // flush forces the WHERE instruction_id = ? AND state_version = ?
             // update to execute now, inside this try block, rather than at
@@ -106,6 +157,14 @@ public class InstructionStateWriter {
         InstructionEventEntity event = new InstructionEventEntity(
                 instructionId, result.sequenceNo(), from, to, actorType, actorId, reasonCode, reasonDetail);
         events.save(event);
+
+        metrics.recordTransition(from, to);
+        if (stageEnteredAt != null) {
+            metrics.recordStageDuration(from, Duration.between(stageEnteredAt, now));
+        }
+        if (to.isTerminal() && entity.getCreatedAt() != null) {
+            metrics.recordPipelineDuration(Duration.between(entity.getCreatedAt(), now));
+        }
 
         return result;
     }

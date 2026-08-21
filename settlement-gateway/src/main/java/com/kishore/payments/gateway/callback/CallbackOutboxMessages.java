@@ -38,7 +38,7 @@ final class CallbackOutboxMessages {
                 instruction.getInstructionId(),
                 SETTLED_TOPIC,
                 instruction.getInstructionId().toString(),
-                OutboxHeaders.of("InstructionSettlement", InstructionSettlementEvent.CURRENT_VERSION, occurredAt, null),
+                OutboxHeaders.of("InstructionSettlement", InstructionSettlementEvent.CURRENT_VERSION, occurredAt),
                 event);
     }
 
@@ -57,7 +57,7 @@ final class CallbackOutboxMessages {
                 instruction.getInstructionId(),
                 EXCEPTIONS_TOPIC,
                 instruction.getInstructionId().toString(),
-                OutboxHeaders.of("InstructionException", InstructionExceptionEvent.CURRENT_VERSION, occurredAt, null),
+                OutboxHeaders.of("InstructionException", InstructionExceptionEvent.CURRENT_VERSION, occurredAt),
                 event);
     }
 }

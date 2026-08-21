@@ -111,7 +111,7 @@ class RepairReentryDoesNotGetSuppressedByStaleStateComparisonTest extends Abstra
                 instruction.getInstructionId(),
                 "payments.validated",
                 instruction.getInstructionId().toString(),
-                OutboxHeaders.of("InstructionValidated", InstructionStageEvent.CURRENT_VERSION, occurredAt, null),
+                OutboxHeaders.of("InstructionValidated", InstructionStageEvent.CURRENT_VERSION, occurredAt),
                 event));
     }
 }

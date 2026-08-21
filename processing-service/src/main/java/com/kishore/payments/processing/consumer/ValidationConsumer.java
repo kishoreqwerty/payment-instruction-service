@@ -172,7 +172,7 @@ public class ValidationConsumer {
                 instruction.getInstructionId(),
                 VALIDATED_TOPIC,
                 instruction.getInstructionId().toString(),
-                OutboxHeaders.of("InstructionValidated", InstructionStageEvent.CURRENT_VERSION, occurredAt, null),
+                OutboxHeaders.of("InstructionValidated", InstructionStageEvent.CURRENT_VERSION, occurredAt),
                 event);
     }
 
@@ -192,7 +192,7 @@ public class ValidationConsumer {
                 instruction.getInstructionId(),
                 EXCEPTIONS_TOPIC,
                 instruction.getInstructionId().toString(),
-                OutboxHeaders.of("InstructionException", InstructionExceptionEvent.CURRENT_VERSION, occurredAt, null),
+                OutboxHeaders.of("InstructionException", InstructionExceptionEvent.CURRENT_VERSION, occurredAt),
                 event);
     }
 

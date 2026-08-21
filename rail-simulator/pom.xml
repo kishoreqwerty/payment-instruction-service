@@ -28,6 +28,39 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
+    <!-- Phase 10 (.notes/reports/PHASE-10-REPORT.md section 3): the OTel bridge for
+         Micrometer Tracing (core already carries the vendor-neutral
+         Tracer/Propagator API, see core/pom.xml) plus an OTLP exporter so
+         spans reach Jaeger, which speaks OTLP natively. Both auto-configured
+         by spring-boot-starter-actuator once present; no explicit
+         @Configuration needed. -->
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-tracing-bridge-otel</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-exporter-otlp</artifactId>
+    </dependency>
+    <!-- Phase 10: nothing scrapes this service's metrics without it: Prometheus
+         needs /actuator/prometheus, which spring-boot-starter-actuator alone does
+         not expose; this is the registry that renders it. -->
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-registry-prometheus</artifactId>
+    </dependency>
+    <!-- Phase 10 (.notes/reports/PHASE-10-REPORT.md section 6): JSON log output, this module's own
+         copy since it deliberately doesn't depend on core (see the note above) and so can't share
+         core's SensitiveFieldMaskingConverter: this module has its own local copy instead
+         (com.kishore.payments.railsim.logging), the same call already made for this service's
+         response DTOs (see RailStatusClient's own javadoc in settlement-gateway). One small,
+         stable, independently-tested duplication is a better boundary here than a dependency on a
+         module whose outbox/instruction-state machinery this simulator has no use for. -->
+    <dependency>
+      <groupId>net.logstash.logback</groupId>
+      <artifactId>logstash-logback-encoder</artifactId>
+      <version>7.4</version>
+    </dependency>
 
     <dependency>
       <groupId>jakarta.xml.bind</groupId>

@@ -76,6 +76,39 @@
       <groupId>io.micrometer</groupId>
       <artifactId>micrometer-core</artifactId>
     </dependency>
+    <!-- Tracer/Propagator/Span: the API core needs to capture the current
+         trace context into an outbox row at write time and restore it at
+         publish time (Phase 10, .notes/reports/PHASE-10-REPORT.md §3). Not
+         the OTel bridge itself (micrometer-tracing-bridge-otel): each
+         hosting service brings its own copy of that, the same way each
+         service brings its own JPA provider; core only needs the
+         vendor-neutral interface to stay usable by a service that, in
+         principle, bridged to a different tracer implementation. -->
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-tracing</artifactId>
+    </dependency>
+
+    <!-- Phase 10 (.notes/reports/PHASE-10-REPORT.md section 6): SensitiveFieldMaskingConverter
+         moved here from intake-service so every service references the same masking logic rather
+         than five independent copies. logback-classic's version is already managed by
+         spring-boot-dependencies (imported once in the root pom); every hosting service already
+         has the real jar on its runtime classpath via spring-boot-starter-logging, so this is
+         effectively compiling against what's already there, not adding new runtime weight. -->
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+    </dependency>
+    <!-- Named and explained per CLAUDE.md's dependency rule: the phase brief calls for JSON log
+         output across every service, and Phase 2's own logback-spring.xml already flagged this
+         exact artifact as the thing structured logging was waiting on ("needs a JSON encoder that
+         isn't in this phase's dependency list ... and is left for a follow-up"). Added here, once,
+         so every service's logback-spring.xml can reference it without a per-service pom edit. -->
+    <dependency>
+      <groupId>net.logstash.logback</groupId>
+      <artifactId>logstash-logback-encoder</artifactId>
+      <version>7.4</version>
+    </dependency>
 
     <!-- Flyway and the PostgreSQL driver are needed only to exercise the
          migrations in this module's own tests; they run as pure SQL

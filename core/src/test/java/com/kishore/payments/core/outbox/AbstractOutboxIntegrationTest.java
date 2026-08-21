@@ -62,7 +62,8 @@ abstract class AbstractOutboxIntegrationTest {
 
     OutboxPublisher newPublisher(Producer<String, String> producer, int batchSize, List<String> knownTopics) {
         return new OutboxPublisher(
-                JDBC, producer, new OutboxMetrics(new SimpleMeterRegistry(), knownTopics), TRANSACTION_MANAGER, batchSize, knownTopics);
+                JDBC, producer, new OutboxMetrics(new SimpleMeterRegistry(), knownTopics), TRANSACTION_MANAGER, null, null, batchSize,
+                knownTopics);
     }
 
     Producer<String, String> newProducer() {

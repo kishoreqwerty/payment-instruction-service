@@ -9,12 +9,12 @@ import org.junit.jupiter.api.Test;
 
 class OutboxWriterTest extends AbstractOutboxIntegrationTest {
 
-    private final OutboxWriter writer = new OutboxWriter(JDBC);
+    private final OutboxWriter writer = new OutboxWriter(JDBC, null, null);
 
     @Test
     void writesAllFieldsAndLeavesPublishedAtNull() throws Exception {
         UUID aggregateId = UUID.randomUUID();
-        Map<String, Object> headers = OutboxHeaders.of("TestEvent", 1, OffsetDateTime.now(), null);
+        Map<String, Object> headers = OutboxHeaders.of("TestEvent", 1, OffsetDateTime.now());
         Map<String, Object> payload = Map.of("foo", "bar", "n", 42);
 
         writer.write(new OutboxMessage(aggregateId, "payments.received", aggregateId.toString(), headers, payload));
@@ -34,7 +34,7 @@ class OutboxWriterTest extends AbstractOutboxIntegrationTest {
     @Test
     void omitsTraceparentWhenAbsent() throws Exception {
         UUID aggregateId = UUID.randomUUID();
-        Map<String, Object> headers = OutboxHeaders.of("TestEvent", 1, OffsetDateTime.now(), null);
+        Map<String, Object> headers = OutboxHeaders.of("TestEvent", 1, OffsetDateTime.now());
 
         writer.write(new OutboxMessage(aggregateId, "payments.received", aggregateId.toString(), headers, Map.of()));
 

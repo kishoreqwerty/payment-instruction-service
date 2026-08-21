@@ -1,5 +1,7 @@
 package com.kishore.payments.exception.config;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -16,10 +18,13 @@ import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
+import org.springframework.kafka.listener.ConsumerRecordRecoverer;
 import org.springframework.kafka.listener.ContainerProperties;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.kafka.support.ExponentialBackOffWithMaxRetries;
+import org.springframework.kafka.core.MicrometerConsumerListener;
+import org.springframework.kafka.core.MicrometerProducerListener;
 
 /**
  * Mirrors processing-service's own KafkaConsumerConfig. Retry policy per
@@ -37,7 +42,8 @@ public class KafkaConsumerConfig {
 
     @Bean
     public ConsumerFactory<String, String> consumerFactory(
-            @Value("${payments.kafka.bootstrap-servers}") String bootstrapServers, @Value("${payments.kafka.consumer-group}") String groupId) {
+            @Value("${payments.kafka.bootstrap-servers}") String bootstrapServers, @Value("${payments.kafka.consumer-group}") String groupId,
+            MeterRegistry meterRegistry) {
         Map<String, Object> props = new HashMap<>();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
@@ -45,16 +51,25 @@ public class KafkaConsumerConfig {
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        return new DefaultKafkaConsumerFactory<>(props);
+        DefaultKafkaConsumerFactory<String, String> factory = new DefaultKafkaConsumerFactory<>(props);
+        // Phase 10: see processing-service's own KafkaConsumerConfig for why this listener has to
+        // be added by hand -- this factory bypasses KafkaAutoConfiguration entirely, so nothing
+        // wires it in for free, and without it there is no consumer-lag data for this service's
+        // topics at all.
+        factory.addListener(new MicrometerConsumerListener<>(meterRegistry));
+        return factory;
     }
 
     @Bean
-    public ProducerFactory<String, String> producerFactory(@Value("${payments.kafka.bootstrap-servers}") String bootstrapServers) {
+    public ProducerFactory<String, String> producerFactory(
+            @Value("${payments.kafka.bootstrap-servers}") String bootstrapServers, MeterRegistry meterRegistry) {
         Map<String, Object> props = new HashMap<>();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        return new DefaultKafkaProducerFactory<>(props);
+        DefaultKafkaProducerFactory<String, String> factory = new DefaultKafkaProducerFactory<>(props);
+        factory.addListener(new MicrometerProducerListener<>(meterRegistry));
+        return factory;
     }
 
     @Bean
@@ -67,20 +82,34 @@ public class KafkaConsumerConfig {
             ConsumerFactory<String, String> consumerFactory,
             KafkaTemplate<String, String> kafkaTemplate,
             @Value("${payments.kafka.dlq-topic:payments.dlq}") String dlqTopic,
-            @Value("${payments.kafka.dlq-partitions:3}") int dlqPartitions) {
+            @Value("${payments.kafka.dlq-partitions:3}") int dlqPartitions,
+            MeterRegistry meterRegistry) {
         ConcurrentKafkaListenerContainerFactory<String, String> factory = new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory);
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL);
+        // Phase 10 (.notes/reports/PHASE-10-REPORT.md section 3): see processing-service's own
+        // KafkaConsumerConfig for why this has to be set explicitly here rather than via
+        // spring.kafka.listener.observation-enabled.
+        factory.getContainerProperties().setObservationEnabled(true);
 
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
                 kafkaTemplate, (record, exception) -> new TopicPartition(dlqTopic, Math.floorMod(record.key().hashCode(), dlqPartitions)));
+
+        // Phase 10 (.notes/reports/PHASE-10-REPORT.md section 5): see processing-service's own
+        // KafkaConsumerConfig for why this is a plain arrival counter, not a lag reading -- nothing
+        // consumes payments.dlq, so Kafka consumer-group lag can't express "unattended message."
+        Counter dlqMessages = meterRegistry.counter("payment_dlq_messages_total");
+        ConsumerRecordRecoverer countingRecoverer = (record, exception) -> {
+            dlqMessages.increment();
+            recoverer.accept(record, exception);
+        };
 
         ExponentialBackOffWithMaxRetries backOff = new ExponentialBackOffWithMaxRetries(5);
         backOff.setInitialInterval(1000L);
         backOff.setMultiplier(2.0);
         backOff.setMaxInterval(16_000L);
 
-        factory.setCommonErrorHandler(new DefaultErrorHandler(recoverer, backOff));
+        factory.setCommonErrorHandler(new DefaultErrorHandler(countingRecoverer, backOff));
         return factory;
     }
 }
