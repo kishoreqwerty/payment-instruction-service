@@ -24,6 +24,41 @@ spring:
     # against this service's full classpath, which includes the migrations
     # packaged inside the core dependency's jar. intake-service does not own
     # a migration directory of its own.
+    #
+    # `schemas: intake` puts this service's own flyway_schema_history table
+    # in the `intake` schema (created by core's own V1) rather than the
+    # connection's default schema (`public`). Every other service that
+    # depends on `core` runs its own, independent Flyway instance against
+    # this same physical database (see docker-compose.yml / README "Running
+    # locally"), and before this, all of them defaulted to one shared
+    # `public.flyway_schema_history` table -- fine for V1, which every
+    # service applies identically, but not for each service's own local
+    # migrations, which independently (and collidingly) started numbering
+    # from V2. Giving each service's history its own schema, matching
+    # ARCHITECTURE.md §3.1's "separate PostgreSQL schemas" per service, means
+    # Flyway validates each service's own version sequence in isolation and
+    # two services can never again disagree about what "V2" means. See
+    # .notes/reports/CROSS-SERVICE-INTEGRATION-DEFECTS.md for the incident
+    # this fixes and core's own V1 migration for the idempotency this
+    # requires of it (multiple independent histories now each apply V1
+    # against a database where a sibling service may have already created
+    # its objects).
+    schemas: intake
+    # baseline-on-migrate: true, because `intake` is not exclusively this
+    # service's own -- core's V1 migration creates it too (intake.raw_message
+    # lives there), so whichever service happens to start first against a
+    # blank database creates the schema and its objects before intake-service
+    # ever gets a turn. Without this, intake-service's own Flyway history
+    # (rooted in that same schema, per the comment above) finds a non-empty
+    # schema with no history table of its own and refuses to proceed
+    # ("Found non-empty schema(s) 'intake' but no schema history table").
+    # baseline-on-migrate tells Flyway that is expected here: mark the
+    # migrations up to baseline-version (default 1, i.e. core's V1 -- the
+    # only migration this service's own classpath contributes) as already
+    # applied rather than re-running DDL a sibling service already ran.
+    # Found running every service together locally against one database --
+    # see .notes/reports/CROSS-SERVICE-INTEGRATION-DEFECTS.md.
+    baseline-on-migrate: true
 
 payments:
   kafka:

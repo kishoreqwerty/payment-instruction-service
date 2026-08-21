@@ -105,6 +105,15 @@
             <goals>
               <goal>repackage</goal>
             </goals>
+            <configuration>
+              <!-- Without a classifier, repackage overwrites the plain jar
+                   with the executable BOOT-INF/classes/... layout, which
+                   integration-tests (a test-scope dependency on this module,
+                   see .notes/reports/CROSS-SERVICE-INTEGRATION-DEFECTS.md)
+                   cannot compile against. Same fix rail-simulator already
+                   uses for the same reason - see that module's own pom.xml. -->
+              <classifier>exec</classifier>
+            </configuration>
           </execution>
         </executions>
       </plugin>

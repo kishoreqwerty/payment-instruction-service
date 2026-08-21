@@ -19,6 +19,7 @@
     <module>rail-simulator</module>
     <module>settlement-gateway</module>
     <module>exception-service</module>
+    <module>integration-tests</module>
   </modules>
 
   <properties>

@@ -9,3 +9,10 @@ CLAUDE.md
 .env
 *.log
 docs/workspace.json
+ops-dashboard/node_modules/
+ops-dashboard/dist/
+ops-dashboard/coverage/
+ops-dashboard/*.tsbuildinfo
+*.tfstate
+*.tfstate.backup
+.terraform/

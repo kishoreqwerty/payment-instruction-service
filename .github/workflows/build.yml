@@ -78,3 +78,40 @@ jobs:
             **/target/failsafe-reports/
           if-no-files-found: warn
           retention-days: 14
+
+  # Not part of the Maven reactor (ops-dashboard/pom.xml doesn't exist -- it's
+  # a separate npm project, per its own phase brief), so it gets its own job
+  # rather than a step bolted onto `build`. Parallel to `build`, not
+  # `needs: build`: the two are independent artifacts with no build-order
+  # dependency between them, and serialising them would only add wall-clock
+  # time for no correctness benefit.
+  ops-dashboard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ops-dashboard
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: ops-dashboard/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build

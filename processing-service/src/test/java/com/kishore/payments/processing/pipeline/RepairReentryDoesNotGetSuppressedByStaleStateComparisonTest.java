@@ -72,7 +72,7 @@ class RepairReentryDoesNotGetSuppressedByStaleStateComparisonTest extends Abstra
                 .isEqualTo(InstructionState.ROUTED);
     }
 
-    /** German IBAN with corrupted check digits -- fails IbanFormatRule (AC01) and nothing else, so this reaches EXCEPTION via exactly one violation. */
+    /** German IBAN with corrupted check digits -- fails DebtorIbanFormatRule (AC01) and nothing else, so this reaches EXCEPTION via exactly one violation. */
     private static PaymentInstructionEntity badIbanEurInstruction(java.time.Clock clock) {
         return new PaymentInstructionEntity(
                 UUID.randomUUID(),

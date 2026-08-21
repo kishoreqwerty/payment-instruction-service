@@ -3,6 +3,7 @@ package com.kishore.payments.exception.timeline;
 import com.kishore.payments.core.instruction.InstructionEventRepository;
 import com.kishore.payments.exception.cases.ExceptionCaseEntity;
 import com.kishore.payments.exception.cases.ExceptionCaseRepository;
+import com.kishore.payments.exception.cases.InvestigationConfirmationRepository;
 import com.kishore.payments.exception.repair.RepairActionRepository;
 import java.util.Comparator;
 import java.util.List;
@@ -15,11 +16,15 @@ public class TimelineService {
     private final InstructionEventRepository events;
     private final ExceptionCaseRepository cases;
     private final RepairActionRepository repairActions;
+    private final InvestigationConfirmationRepository confirmations;
 
-    public TimelineService(InstructionEventRepository events, ExceptionCaseRepository cases, RepairActionRepository repairActions) {
+    public TimelineService(
+            InstructionEventRepository events, ExceptionCaseRepository cases, RepairActionRepository repairActions,
+            InvestigationConfirmationRepository confirmations) {
         this.events = events;
         this.cases = cases;
         this.repairActions = repairActions;
+        this.confirmations = confirmations;
     }
 
     public List<TimelineEntry> forInstruction(UUID instructionId) {
@@ -33,6 +38,15 @@ public class TimelineService {
                 entries.add(TimelineEntry.ofRepairProposed(action));
                 if (action.isApproved()) {
                     entries.add(TimelineEntry.ofRepairApproved(action));
+                }
+            }
+            // See TimelineEntry's own javadoc: Phase 8 wired repair actions into this
+            // timeline but never investigation confirmations, so an INVESTIGATION
+            // case's timeline silently omitted the one action that resolved it.
+            for (var confirmation : confirmations.findByCaseIdIn(caseIds)) {
+                entries.add(TimelineEntry.ofConfirmationProposed(confirmation));
+                if (confirmation.isApproved()) {
+                    entries.add(TimelineEntry.ofConfirmationApproved(confirmation));
                 }
             }
         }

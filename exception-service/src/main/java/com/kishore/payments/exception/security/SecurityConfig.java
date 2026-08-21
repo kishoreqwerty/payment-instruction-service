@@ -1,9 +1,12 @@
 package com.kishore.payments.exception.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.core.env.Environment;
 import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -11,6 +14,9 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 /**
  * HTTP Basic with in-memory users -- a deliberate simplification, per the
@@ -33,15 +39,44 @@ import org.springframework.security.web.SecurityFilterChain;
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper objectMapper) throws Exception {
+        JsonAuthEntryPoints entryPoints = new JsonAuthEntryPoints(objectMapper);
         http.csrf(csrf -> csrf.disable())
+                .cors(Customizer.withDefaults())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
                         .anyRequest().authenticated())
-                .httpBasic(Customizer.withDefaults())
+                .httpBasic(basic -> basic.authenticationEntryPoint(entryPoints))
+                .exceptionHandling(handling -> handling.accessDeniedHandler(entryPoints))
                 .sessionManagement(session -> session.sessionCreationPolicy(
                         org.springframework.security.config.http.SessionCreationPolicy.STATELESS));
         return http.build();
+    }
+
+    /**
+     * The ops-dashboard (Phase 9) is a browser client on a different origin
+     * (the Vite dev server) than this API, and CORS is a browser-enforced
+     * check with nothing to trigger it in Phase 8's own server-to-server or
+     * test-client callers -- a genuine gap this phase's client exposed, not
+     * a pre-existing bug. Origins are read from configuration rather than
+     * hardcoded so a deployed dashboard's real origin doesn't require a
+     * code change; {@code allowCredentials} is left false because the
+     * dashboard authenticates with an explicit {@code Authorization} header
+     * on each request, not a cookie -- there is no session for the browser
+     * to send automatically, so the credentialed-CORS complexity (and its
+     * incompatibility with a wildcard origin) does not apply here.
+     */
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource(Environment env) {
+        String[] origins = env.getProperty("payments.exceptions.dashboard-origins", "http://localhost:5173").split(",");
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOrigins(List.of(origins));
+        configuration.setAllowedMethods(List.of("GET", "POST"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        configuration.setAllowCredentials(false);
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
     }
 
     @Bean

@@ -16,6 +16,15 @@ spring:
       ddl-auto: none
   flyway:
     enabled: true
+    # `schemas: exceptions` puts this service's own flyway_schema_history in
+    # its own schema rather than the shared `public` default -- see
+    # intake-service's application.yml for the full reasoning (the V2
+    # collision this fixes) and .notes/reports/CROSS-SERVICE-INTEGRATION-DEFECTS.md.
+    schemas: exceptions
+    # See intake-service's application.yml for the full reasoning: harmless
+    # when not needed, and defends this service too against the same class
+    # of shared-schema start-order race if one is ever introduced here.
+    baseline-on-migrate: true
 
 payments:
   kafka:
@@ -35,6 +44,10 @@ payments:
     # lineage spans (a bad repair opens a new case, but the count carries
     # forward -- see ExceptionCaseService), not reset per case.
     max-repair-attempts: 3
+    # Comma-separated allowed CORS origins for the ops-dashboard (Phase 9).
+    # The Vite dev server's default port locally; a real deployment would
+    # override this with the dashboard's actual origin.
+    dashboard-origins: http://localhost:5173
 
 management:
   endpoints:

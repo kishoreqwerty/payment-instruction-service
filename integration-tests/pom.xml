@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.kishore.payments</groupId>
+    <artifactId>payment-instruction-service</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>integration-tests</artifactId>
+  <packaging>jar</packaging>
+
+  <name>integration-tests</name>
+  <description>
+    Cross-service integration tests that no single service's own test suite can express: every
+    service's own Testcontainers-based suite starts a fresh, isolated database per test class,
+    which is exactly why the Flyway V2 collision and the missing creditor-IBAN validation rule
+    (see .notes/reports/CROSS-SERVICE-INTEGRATION-DEFECTS.md) were both invisible to it. This
+    module has test-scope dependencies on the real services it boots, mirroring the precedent
+    settlement-gateway already set for rail-simulator (see AbstractGatewayIntegrationTest's own
+    javadoc) -- no main sources of its own, only tests that start more than one real service's
+    Spring context against one shared database.
+  </description>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.kishore.payments</groupId>
+      <artifactId>core</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.kishore.payments</groupId>
+      <artifactId>intake-service</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.kishore.payments</groupId>
+      <artifactId>processing-service</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.kishore.payments</groupId>
+      <artifactId>settlement-gateway</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.kishore.payments</groupId>
+      <artifactId>exception-service</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>redpanda</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+
+</project>

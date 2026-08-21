@@ -4,7 +4,13 @@
 -- cutoff or a non-business settlement date forward. Realistic enough to
 -- route and roll against, not a real correspondent network or cutoff table.
 
-CREATE SCHEMA refdata;
+-- IF NOT EXISTS: Flyway itself pre-creates this schema (spring.flyway.schemas
+-- in application.yml, so this service's own flyway_schema_history lives
+-- here rather than in the shared `public` default -- see that file's own
+-- comment) before running any migration, specifically so it has somewhere
+-- to put the history table. Without IF NOT EXISTS here, this statement
+-- collides with Flyway's own prior creation of the same schema.
+CREATE SCHEMA IF NOT EXISTS refdata;
 
 CREATE TABLE refdata.correspondent (
     creditor_agent_bic  TEXT PRIMARY KEY,

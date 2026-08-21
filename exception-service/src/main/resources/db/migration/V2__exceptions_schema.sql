@@ -2,7 +2,13 @@
 -- DDL this is based on, and .notes/reports/PHASE-8-REPORT.md for what was
 -- added beyond that sketch and why.
 
-CREATE SCHEMA exceptions;
+-- IF NOT EXISTS: Flyway itself pre-creates this schema (spring.flyway.schemas
+-- in application.yml, so this service's own flyway_schema_history lives
+-- here rather than in the shared `public` default -- see that file's own
+-- comment) before running any migration, specifically so it has somewhere
+-- to put the history table. Without IF NOT EXISTS here, this statement
+-- collides with Flyway's own prior creation of the same schema.
+CREATE SCHEMA IF NOT EXISTS exceptions;
 
 -- case_type and status are both additions beyond .notes/ARCHITECTURE.md's own
 -- DDL sketch, which only shows `resolution` (the terminal disposition).

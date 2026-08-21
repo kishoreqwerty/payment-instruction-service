@@ -10,9 +10,9 @@ import java.time.LocalDate;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-class IbanFormatRuleTest {
+class DebtorIbanFormatRuleTest {
 
-    private final IbanFormatRule rule = new IbanFormatRule();
+    private final DebtorIbanFormatRule rule = new DebtorIbanFormatRule();
 
     @Test
     void passesForAValidIban() {

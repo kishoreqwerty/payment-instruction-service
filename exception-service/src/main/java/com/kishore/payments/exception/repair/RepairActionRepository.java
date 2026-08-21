@@ -9,4 +9,7 @@ public interface RepairActionRepository extends JpaRepository<RepairActionEntity
     List<RepairActionEntity> findByCaseIdOrderByProposedAtAsc(UUID caseId);
 
     List<RepairActionEntity> findByCaseIdIn(List<UUID> caseIds);
+
+    /** The checker's approval queue (Phase 9): every proposal awaiting a decision, oldest first, across every case. */
+    List<RepairActionEntity> findByApprovedByIsNullOrderByProposedAtAsc();
 }
