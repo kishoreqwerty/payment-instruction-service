@@ -143,7 +143,9 @@ public class CallbackCorrelationService {
             return;
         }
 
-        String actorId = "rail:" + railId;
+        // No "rail:" self-prefix: ActorType.RAIL already says what kind of actor this is (see
+        // CallbackStatusApplier's own comment on the same pattern).
+        String actorId = railId;
         TransitionResult result = stateWriter.transition(
                 instruction.getInstructionId(), InstructionState.RETURNED, ActorType.RAIL, actorId, inboundReturn.reasonCode(), null);
         outboxWriter.write(CallbackOutboxMessages.toSettlementMessage(instruction, result, InstructionState.RETURNED, railId, inboundReturn.reasonCode(), clock));

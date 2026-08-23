@@ -22,11 +22,15 @@ import org.springframework.data.domain.Persistable;
  * newness check (is the id null?) would otherwise treat every new case as
  * already persisted and issue a wasted merge instead of a plain insert.
  *
- * <p>No {@code classifierCode}/{@code classifierConf}/{@code
- * classifierAccepted} mapping: those columns exist in the schema for Phase
- * 11's not-yet-built classifier (.notes/ARCHITECTURE.md §10), and mapping
- * them here with nothing to ever set them would be exactly the kind of stub
- * the phase brief says to leave out.
+ * <p>{@code classifierCode}/{@code classifierConf}/{@code classifierAccepted}
+ * (Phase 11, .notes/ARCHITECTURE.md §10): the columns have existed in the
+ * schema since Phase 8; this is the mapping Phase 8 deliberately left out
+ * since nothing yet set them. {@code classifierAccepted} starts {@code null}
+ * (no proposal yet, or the operator hasn't acted on one) and is set only
+ * when the operator explicitly accepts or overrides the proposed field
+ * repair -- see {@code ExceptionCaseService.proposeRepair}'s classifier-
+ * acceptance recording and .notes/reports/PHASE-11-REPORT.md §5 for what
+ * that signal does and does not mean.
  */
 @Entity
 @Table(name = "exception_case", schema = "exceptions")
@@ -79,6 +83,27 @@ public class ExceptionCaseEntity implements Persistable<UUID> {
 
     @Column(name = "justification")
     private String justification;
+
+    @Column(name = "classifier_code")
+    private String classifierCode;
+
+    @Column(name = "classifier_repairability")
+    private String classifierRepairability;
+
+    @Column(name = "classifier_conf")
+    private Double classifierConf;
+
+    @Column(name = "classifier_accepted")
+    private Boolean classifierAccepted;
+
+    @Column(name = "classifier_suggested_field")
+    private String classifierSuggestedField;
+
+    @Column(name = "classifier_suggested_value")
+    private String classifierSuggestedValue;
+
+    @Column(name = "classifier_rationale")
+    private String classifierRationale;
 
     @Transient
     private boolean isNew = true;
@@ -217,5 +242,61 @@ public class ExceptionCaseEntity implements Persistable<UUID> {
 
     public void setClosedAt(OffsetDateTime closedAt) {
         this.closedAt = closedAt;
+    }
+
+    public String getClassifierCode() {
+        return classifierCode;
+    }
+
+    public void setClassifierCode(String classifierCode) {
+        this.classifierCode = classifierCode;
+    }
+
+    public String getClassifierRepairability() {
+        return classifierRepairability;
+    }
+
+    public void setClassifierRepairability(String classifierRepairability) {
+        this.classifierRepairability = classifierRepairability;
+    }
+
+    public Double getClassifierConf() {
+        return classifierConf;
+    }
+
+    public void setClassifierConf(Double classifierConf) {
+        this.classifierConf = classifierConf;
+    }
+
+    public Boolean getClassifierAccepted() {
+        return classifierAccepted;
+    }
+
+    public void setClassifierAccepted(Boolean classifierAccepted) {
+        this.classifierAccepted = classifierAccepted;
+    }
+
+    public String getClassifierSuggestedField() {
+        return classifierSuggestedField;
+    }
+
+    public void setClassifierSuggestedField(String classifierSuggestedField) {
+        this.classifierSuggestedField = classifierSuggestedField;
+    }
+
+    public String getClassifierSuggestedValue() {
+        return classifierSuggestedValue;
+    }
+
+    public void setClassifierSuggestedValue(String classifierSuggestedValue) {
+        this.classifierSuggestedValue = classifierSuggestedValue;
+    }
+
+    public String getClassifierRationale() {
+        return classifierRationale;
+    }
+
+    public void setClassifierRationale(String classifierRationale) {
+        this.classifierRationale = classifierRationale;
     }
 }

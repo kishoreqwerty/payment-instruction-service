@@ -153,6 +153,16 @@ export function useRetryStaticData() {
   });
 }
 
+export function useClassifierFeedback() {
+  const api = useApi();
+  const invalidate = useInvalidateAfterMutation();
+  return useMutation({
+    mutationFn: ({ caseId, accepted }: { caseId: string; accepted: boolean }) =>
+      api.post<import("./types").CaseSummaryResponse>(`/v1/cases/${caseId}/classifier-feedback`, { accepted }),
+    onSuccess: invalidate,
+  });
+}
+
 export function useRejectCase() {
   const api = useApi();
   const invalidate = useInvalidateAfterMutation();

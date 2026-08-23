@@ -46,6 +46,16 @@ export interface CaseSummaryResponse {
   justification: string | null;
   openedAt: string;
   closedAt: string | null;
+  // Phase 11: the classifier's proposal, if it ran and produced one -- all null if the
+  // classifier was unavailable or its response was unusable. Never authoritative; see
+  // ClassifierProposalPanel for how this is presented (a suggestion, not a determination).
+  classifierCode: string | null;
+  classifierRepairability: Repairability | null;
+  classifierConf: number | null;
+  classifierAccepted: boolean | null;
+  classifierSuggestedField: string | null;
+  classifierSuggestedValue: string | null;
+  classifierRationale: string | null;
 }
 
 export interface RepairActionResponse {
@@ -90,6 +100,10 @@ export interface InstructionSummaryResponse {
   creditorAgentBic: string | null;
   creditorName: string | null;
   chargeBearer: string | null;
+  // Non-null when a non-terminal exception case exists for this instruction -- lets a
+  // lookup-screen result row navigate straight to it. Null from CaseDetailResponse's own
+  // embedded instruction (the case is already known there).
+  openCaseId: string | null;
 }
 
 export interface TimelineEntry {

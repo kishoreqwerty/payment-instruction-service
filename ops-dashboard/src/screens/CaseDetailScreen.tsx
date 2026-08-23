@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useCase, useRejectCase, useRetryStaticData, useTimeline } from "../api/queries";
 import { useRole } from "../auth/AuthContext";
@@ -6,6 +7,7 @@ import { ErrorBanner } from "../components/ErrorBanner";
 import { RepairabilityBadge } from "../components/RepairabilityBadge";
 import { ReasonExplanation } from "../components/ReasonExplanation";
 import { StatusBadge } from "../components/StatusBadge";
+import { ClassifierProposalPanel } from "./case-detail/ClassifierProposalPanel";
 import { InvestigationResolutionPanel } from "./case-detail/InvestigationResolutionPanel";
 import { RepairForm } from "./case-detail/RepairForm";
 import { Timeline } from "./case-detail/Timeline";
@@ -19,6 +21,7 @@ export function CaseDetailScreen() {
   const isChecker = useRole("CHECKER");
   const retry = useRetryStaticData();
   const reject = useRejectCase();
+  const [suggestion, setSuggestion] = useState<{ fieldPath: string; value: string } | null>(null);
 
   if (isLoading) return <div className="loading-state">Loading case…</div>;
   if (error) return <ErrorBanner error={error} />;
@@ -88,6 +91,12 @@ export function CaseDetailScreen() {
         </div>
       </div>
 
+      <ClassifierProposalPanel
+        exceptionCase={exceptionCase}
+        canAct={isMaker && exceptionCase.status === "OPEN" && caseActionable}
+        onUseSuggestion={(fieldPath, value) => setSuggestion({ fieldPath, value })}
+      />
+
       {((isMaker && exceptionCase.repairability === "STATIC_DATA" && caseActionable) ||
         (isChecker && exceptionCase.caseType === "BUSINESS_FAILURE" && caseActionable)) && (
         <div className="panel">
@@ -109,7 +118,7 @@ export function CaseDetailScreen() {
 
       {exceptionCase.caseType === "BUSINESS_FAILURE" &&
         (isMaker && exceptionCase.status === "OPEN" ? (
-          <RepairForm caseId={exceptionCase.caseId} instruction={instruction} />
+          <RepairForm caseId={exceptionCase.caseId} instruction={instruction} suggestion={suggestion} />
         ) : repairActions.length === 0 ? (
           !caseActionable ? null : (
             <div className="panel">

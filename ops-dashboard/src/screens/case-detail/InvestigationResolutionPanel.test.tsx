@@ -24,6 +24,13 @@ const caseDetail: CaseDetailResponse = {
     justification: null,
     openedAt: new Date().toISOString(),
     closedAt: null,
+    classifierCode: null,
+    classifierRepairability: null,
+    classifierConf: null,
+    classifierAccepted: null,
+    classifierSuggestedField: null,
+    classifierSuggestedValue: null,
+    classifierRationale: null,
   },
   instruction: {
     instructionId: "instr-3",
@@ -38,6 +45,7 @@ const caseDetail: CaseDetailResponse = {
     creditorAgentBic: "WESTGB2LXXX",
     creditorName: "Overseas Ltd",
     chargeBearer: "SHAR",
+    openCaseId: null,
   },
   repairActions: [],
   investigationConfirmations: [

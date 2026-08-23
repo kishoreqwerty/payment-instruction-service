@@ -19,6 +19,7 @@ const instruction = {
   creditorAgentBic: "DEUTDEFFXXX",
   creditorName: "Creditor SARL",
   chargeBearer: "SHAR",
+  openCaseId: null,
 };
 
 describe("RepairForm", () => {

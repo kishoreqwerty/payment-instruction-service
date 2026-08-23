@@ -20,6 +20,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -144,14 +145,12 @@ class ObservabilityTracingIntegrationTest {
         rootLogger.detachAppender(logCapture);
         assertNoPiiInCapturedLogs(logCapture);
 
-        JsonNode trace = awaitTraceForInstruction(instructionId, Duration.ofSeconds(30));
+        Set<String> requiredServiceNames = Set.of("intake-service", "processing-service", "settlement-gateway", "rail-simulator");
+        JsonNode trace = awaitTraceForInstruction(instructionId, Duration.ofSeconds(30), requiredServiceNames);
 
-        JsonNode processes = trace.path("processes");
-        java.util.Set<String> serviceNames = new java.util.HashSet<>();
-        processes.fieldNames().forEachRemaining(processId -> serviceNames.add(processes.path(processId).path("serviceName").asText()));
-        assertThat(serviceNames)
+        assertThat(traceServiceNames(trace))
                 .as("one trace should span every hop, not one disconnected trace per topic boundary")
-                .contains("intake-service", "processing-service", "settlement-gateway", "rail-simulator");
+                .containsAll(requiredServiceNames);
 
         List<String> operationNames = new java.util.ArrayList<>();
         trace.path("spans").forEach(span -> operationNames.add(span.path("operationName").asText()));
@@ -230,17 +229,31 @@ class ObservabilityTracingIntegrationTest {
      * com.kishore.payments.core.state.InstructionStateWriter} sets on every span -- proving the
      * acceptance criterion literally, not just approximately: the whole trace is findable from that
      * one identifier alone. Polling accounts for the OTel batch span processor's own export delay
-     * (spans are not sent to the collector the instant they end).
+     * (spans are not sent to the collector the instant they end) -- and, critically, for that
+     * delay differing *per service*: intake/processing's spans are created early in the pipeline
+     * and are usually already exported by the time polling starts, while settlement-gateway's and
+     * rail-simulator's are created last and can still be sitting in an unflushed batch. Jaeger
+     * itself has no concept of "this trace is finished" -- {@code /api/traces?...} returns
+     * whatever spans have arrived *so far* for a trace ID, which can be a real but incomplete
+     * subset of the eventual whole. An earlier version of this method returned as soon as that
+     * response was merely non-empty, so a query that landed in the gap between "intake+processing
+     * exported" and "gateway+rail-simulator exported" would accept an incomplete trace as the
+     * final answer and never poll again -- passing or failing depending on exactly how that race
+     * landed, not on whether the trace was ever actually assembled. Found by reproducing the
+     * failure directly (running {@code MultiServiceSharedDatabaseTest} immediately before this
+     * test in the same JVM fork, matching a full `mvn clean verify`'s default single-fork
+     * behaviour, made the gap wide enough to hit reliably) and confirmed via a direct
+     * {@code core.outbox} query showing every hop, including settlement-gateway's own post
+     * -dispatch write, already shared one unbroken trace id -- the propagation was never broken,
+     * only this method's willingness to stop looking too early.
      *
      * <p>Queried under {@code processing-service}, not {@code intake-service}: {@link
      * com.kishore.payments.core.state.InstructionStateWriter#transition} is where the tag is set,
      * and intake-service's own initial RECEIVED row is created by a direct insert, not a
      * transition -- see .notes/reports/PHASE-10-REPORT.md section 5 for why that's a real,
-     * separately-noted gap rather than an oversight in this test. The fetched trace (by ID, once
-     * found) still contains every service's spans regardless of which one the search itself was
-     * anchored to.
+     * separately-noted gap rather than an oversight in this test.
      */
-    private JsonNode awaitTraceForInstruction(UUID instructionId, Duration timeout) throws Exception {
+    private JsonNode awaitTraceForInstruction(UUID instructionId, Duration timeout, Set<String> requiredServiceNames) throws Exception {
         String tags = java.net.URLEncoder.encode("{\"instruction_id\":\"" + instructionId + "\"}", java.nio.charset.StandardCharsets.UTF_8);
         String url = "http://localhost:" + JAEGER.getMappedPort(16686) + "/api/traces?service=processing-service&tags=" + tags;
 
@@ -254,13 +267,29 @@ class ObservabilityTracingIntegrationTest {
             try {
                 JsonNode body = json.readTree(response.getBody());
                 JsonNode traces = body.path("data");
-                return traces.isArray() && traces.size() > 0 ? traces.get(0) : null;
+                if (!traces.isArray() || traces.size() == 0) {
+                    return null;
+                }
+                JsonNode candidate = traces.get(0);
+                // Not just "a trace exists" -- "this trace has every service we expect", or keep
+                // polling. A trace missing spans is a real, valid Jaeger response, not an error;
+                // treating it as "found" the moment it's non-empty is exactly the bug this
+                // completeness check exists to close.
+                return traceServiceNames(candidate).containsAll(requiredServiceNames) ? candidate : null;
             } catch (Exception e) {
                 return null;
             }
         });
-        assertThat(data).as("Jaeger should have a trace tagged with instruction_id=" + instructionId + " within " + timeout).isNotNull();
+        assertThat(data).as("Jaeger should have a trace tagged with instruction_id=" + instructionId + " containing every service in "
+                + requiredServiceNames + " within " + timeout).isNotNull();
         return data;
+    }
+
+    private static Set<String> traceServiceNames(JsonNode trace) {
+        Set<String> names = new java.util.HashSet<>();
+        trace.path("processes").fieldNames().forEachRemaining(
+                processId -> names.add(trace.path("processes").path(processId).path("serviceName").asText()));
+        return names;
     }
 
     private <T> T awaitUntilNonNull(Duration timeout, Supplier<T> value) {

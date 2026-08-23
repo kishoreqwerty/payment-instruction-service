@@ -1,6 +1,9 @@
 package com.kishore.payments.exception.api;
 
+import com.kishore.payments.core.instruction.PaymentInstructionEntity;
 import com.kishore.payments.core.instruction.PaymentInstructionRepository;
+import com.kishore.payments.exception.cases.CaseStatus;
+import com.kishore.payments.exception.cases.ExceptionCaseRepository;
 import com.kishore.payments.exception.timeline.TimelineEntry;
 import com.kishore.payments.exception.timeline.TimelineService;
 import java.util.List;
@@ -17,11 +20,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/v1/instructions")
 public class InstructionController {
 
+    /** Same definition as {@code ExceptionCaseOpener.TERMINAL_STATUSES} -- "no case is open" means no case in a non-terminal status. */
+    private static final List<CaseStatus> TERMINAL_STATUSES = List.of(CaseStatus.RESOLVED, CaseStatus.REJECTED);
+
     private final PaymentInstructionRepository instructions;
+    private final ExceptionCaseRepository cases;
     private final TimelineService timelineService;
 
-    public InstructionController(PaymentInstructionRepository instructions, TimelineService timelineService) {
+    public InstructionController(
+            PaymentInstructionRepository instructions, ExceptionCaseRepository cases, TimelineService timelineService) {
         this.instructions = instructions;
+        this.cases = cases;
         this.timelineService = timelineService;
     }
 
@@ -38,11 +47,19 @@ public class InstructionController {
     public List<InstructionSummaryResponse> lookup(
             @RequestParam(required = false) UUID uetr, @RequestParam(required = false) String endToEndId) {
         if (uetr != null) {
-            return instructions.findByUetr(uetr).map(List::of).orElseGet(List::of).stream().map(InstructionSummaryResponse::of).toList();
+            return instructions.findByUetr(uetr).map(List::of).orElseGet(List::of).stream().map(this::withOpenCase).toList();
         }
         if (endToEndId != null) {
-            return instructions.findByEndToEndId(endToEndId).stream().map(InstructionSummaryResponse::of).toList();
+            return instructions.findByEndToEndId(endToEndId).stream().map(this::withOpenCase).toList();
         }
         throw new IllegalArgumentException("One of uetr or endToEndId is required");
+    }
+
+    /** A lookup-screen result needs somewhere to navigate to (a case if one is open) -- see {@link InstructionSummaryResponse#openCaseId}. */
+    private InstructionSummaryResponse withOpenCase(PaymentInstructionEntity entity) {
+        UUID openCaseId = cases.findByInstructionIdAndStatusNotIn(entity.getInstructionId(), TERMINAL_STATUSES)
+                .map(exceptionCase -> exceptionCase.getCaseId())
+                .orElse(null);
+        return InstructionSummaryResponse.of(entity, openCaseId);
     }
 }

@@ -21,7 +21,7 @@ class CurrencyConsistentWithDebtorCountryRuleTest {
     }
 
     @Test
-    void failsWithNoReasonCodeWhenCurrencyContradictsASingleCurrencyCountry() {
+    void failsWithCurrWhenCurrencyContradictsASingleCurrencyCountry() {
         PaymentInstructionEntity germanDebtorUsdPayment = new PaymentInstructionEntity(
                 UUID.randomUUID(),
                 UUID.randomUUID(),
@@ -40,7 +40,7 @@ class CurrencyConsistentWithDebtorCountryRuleTest {
                 LocalDate.now());
 
         var violation = rule.validate(germanDebtorUsdPayment).orElseThrow();
-        assertThat(violation.reasonCode()).isNull();
+        assertThat(violation.reasonCode()).isEqualTo("CURR");
         assertThat(violation.field()).isEqualTo("currency");
     }
 

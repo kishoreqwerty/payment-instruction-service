@@ -57,17 +57,38 @@ class TimelineAndLookupTest extends AbstractExceptionServiceIntegrationTest {
 
     @Test
     void lookupByUetrAndByEndToEndId() {
+        // seedInstructionAtException only inserts the payment_instruction row -- no
+        // exception_case exists for it, so a lookup-screen row for this instruction
+        // would have nowhere but the timeline to navigate to.
         PaymentInstructionEntity instruction = seedInstructionAtException("INVALID-IBAN");
 
         ResponseEntity<InstructionSummaryResponse[]> byUetr = asUser("viewer")
                 .getForEntity(url("/v1/instructions?uetr=" + instruction.getUetr()), InstructionSummaryResponse[].class);
         assertThat(byUetr.getBody()).hasSize(1);
         assertThat(byUetr.getBody()[0].instructionId()).isEqualTo(instruction.getInstructionId());
+        assertThat(byUetr.getBody()[0].openCaseId()).isNull();
 
         ResponseEntity<InstructionSummaryResponse[]> byEndToEndId = asUser("viewer")
                 .getForEntity(url("/v1/instructions?endToEndId=" + instruction.getEndToEndId()), InstructionSummaryResponse[].class);
         assertThat(byEndToEndId.getBody()).hasSize(1);
         assertThat(byEndToEndId.getBody()[0].uetr()).isEqualTo(instruction.getUetr());
+    }
+
+    /** A lookup-screen row needs somewhere to navigate to: the case, when one is open (see InstructionSummaryResponse#openCaseId). */
+    @Test
+    void lookupIncludesOpenCaseIdWhenACaseIsOpen() {
+        PaymentInstructionEntity instruction = seedInstructionAtException("INVALID-IBAN");
+        publishExceptionEvent(
+                instruction.getInstructionId(), instruction.getUetr(), instruction.getEndToEndId(), 2, FailureStage.VALIDATION,
+                new InstructionExceptionEvent.Detail("AC01", Repairability.REPAIRABLE, "creditorAccount", "invalid IBAN checksum"));
+        awaitCondition(Duration.ofSeconds(5), () -> !cases.findByInstructionIdOrderByOpenedAtDesc(instruction.getInstructionId()).isEmpty());
+        ExceptionCaseEntity exceptionCase = cases.findByInstructionIdOrderByOpenedAtDesc(instruction.getInstructionId()).get(0);
+
+        ResponseEntity<InstructionSummaryResponse[]> byUetr = asUser("viewer")
+                .getForEntity(url("/v1/instructions?uetr=" + instruction.getUetr()), InstructionSummaryResponse[].class);
+
+        assertThat(byUetr.getBody()).hasSize(1);
+        assertThat(byUetr.getBody()[0].openCaseId()).isEqualTo(exceptionCase.getCaseId());
     }
 
     @Test

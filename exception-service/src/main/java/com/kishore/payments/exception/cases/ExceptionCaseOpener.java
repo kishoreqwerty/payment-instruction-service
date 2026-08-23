@@ -51,19 +51,25 @@ class ExceptionCaseOpener {
         this.metrics = metrics;
     }
 
-    void handle(InstructionExceptionEvent event) {
+    /**
+     * {@code Optional.empty()} when the event appended to an already-open case rather than
+     * opening a new one -- the classifier (Phase 11) only ever runs once, at the moment a case
+     * first opens, not on every subsequent failure event against the same case. See {@link
+     * ExceptionCaseService#handleExceptionEvent} for what the caller does with a non-empty result.
+     */
+    Optional<NewCase> handle(InstructionExceptionEvent event) {
         try {
-            openOrAppend(event);
+            return openOrAppend(event);
         } catch (DataIntegrityViolationException e) {
             if (!isOpenCaseCollision(e)) {
                 throw e;
             }
-            openOrAppend(event);
+            return openOrAppend(event);
         }
     }
 
     @Transactional
-    void openOrAppend(InstructionExceptionEvent event) {
+    Optional<NewCase> openOrAppend(InstructionExceptionEvent event) {
         PaymentInstructionEntity instruction = instructions
                 .findById(event.instructionId())
                 .orElseThrow(() -> new NoSuchElementException("No payment instruction: " + event.instructionId()));
@@ -73,12 +79,14 @@ class ExceptionCaseOpener {
         Optional<ExceptionCaseEntity> existingOpen = cases.findByInstructionIdAndStatusNotIn(event.instructionId(), TERMINAL_STATUSES);
         if (existingOpen.isPresent()) {
             appendToCase(existingOpen.get(), event, detail);
-        } else {
-            openNewCase(event.instructionId(), caseType, event, detail);
+            return Optional.empty();
         }
+        ExceptionCaseEntity newCase = openNewCase(event.instructionId(), caseType, event, detail);
+        return Optional.of(new NewCase(newCase, instruction, detail));
     }
 
-    private void openNewCase(UUID instructionId, CaseType caseType, InstructionExceptionEvent event, InstructionExceptionEvent.Detail detail) {
+    private ExceptionCaseEntity openNewCase(
+            UUID instructionId, CaseType caseType, InstructionExceptionEvent event, InstructionExceptionEvent.Detail detail) {
         int startingAttempts = cases.findByInstructionIdOrderByOpenedAtDesc(instructionId).stream()
                 .findFirst()
                 .map(ExceptionCaseEntity::getRepairAttempts)
@@ -92,6 +100,7 @@ class ExceptionCaseOpener {
         // method's control.
         cases.saveAndFlush(newCase);
         metrics.recordCaseOpened(event.failureStage(), detail.reasonCode(), detail.repairability());
+        return newCase;
     }
 
     private void appendToCase(ExceptionCaseEntity existing, InstructionExceptionEvent event, InstructionExceptionEvent.Detail detail) {
@@ -101,6 +110,10 @@ class ExceptionCaseOpener {
         existing.setRepairability(detail.repairability());
         cases.save(existing);
         // No metrics.recordCaseOpened here: same case, not a new one.
+    }
+
+    /** Everything {@link com.kishore.payments.exception.classifier.ClassifierInvoker} needs, assembled once, on the thread that already has it. */
+    record NewCase(ExceptionCaseEntity exceptionCase, PaymentInstructionEntity instruction, InstructionExceptionEvent.Detail detail) {
     }
 
     private static InstructionExceptionEvent.Detail primaryDetail(InstructionExceptionEvent event) {

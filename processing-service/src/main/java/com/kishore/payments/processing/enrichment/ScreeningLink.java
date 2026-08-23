@@ -8,7 +8,14 @@ import com.kishore.payments.processing.failure.FailureDetail;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
-/** A held screening result routes to the exception path as UNREPAIRABLE (a screening hit needs investigation, not a field correction) -- unreachable with {@link NoOpScreeningProvider}, which never returns anything but CLEAR. */
+/**
+ * A held screening result routes to the exception path as UNREPAIRABLE (a screening hit needs
+ * investigation, not a field correction) -- unreachable with {@link NoOpScreeningProvider}, which
+ * never returns anything but CLEAR. ISO 20022 external code RR04 ("RegulatoryReason") applies:
+ * it is the standard code for a regulatory/sanctions hold and, per its own definition, should
+ * never be retried without compliance review -- consistent with UNREPAIRABLE here. Previously
+ * emitted no reason code at all.
+ */
 @Component
 @Order(6)
 public class ScreeningLink implements EnrichmentLink {
@@ -25,7 +32,8 @@ public class ScreeningLink implements EnrichmentLink {
             throw new BusinessFailureException(
                     FailureStage.ENRICHMENT,
                     new FailureDetail(
-                            null, Repairability.UNREPAIRABLE, null, "Instruction held by screening: " + instruction.getInstructionId()));
+                            "RR04", Repairability.UNREPAIRABLE, null,
+                            "Instruction held by screening: " + instruction.getInstructionId()));
         }
     }
 }

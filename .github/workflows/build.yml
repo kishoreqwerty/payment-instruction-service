@@ -115,3 +115,41 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  # Also independent of `build` (own language, own toolchain, no build-order
+  # dependency), same pattern as `ops-dashboard` above. Never makes a live
+  # Anthropic API call: `run_evaluation.py` (the piece that does) is a
+  # manually-invoked, human-in-the-loop step per .notes/reports/PHASE-11
+  # -REPORT.md section 5, run when iterating on the prompt or refreshing the
+  # committed baseline -- not something CI should re-run, re-bill, and risk
+  # reintroducing sampling variance into on every push. What CI checks
+  # instead is (1) the metrics/gate logic itself via pytest, including a
+  # synthetic proof that the gate actually fails on a degraded run (see
+  # tests/test_gate.py), and (2) that the currently-committed
+  # reports/baseline_holdout.json still clears gate.yaml's absolute kappa
+  # floor -- so a future commit that replaces the baseline with a worse one
+  # is caught here, not just noticed later by a human reading the report.
+  evaluation:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: evaluation
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: evaluation/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run harness unit tests
+        run: python -m pytest tests/ -v
+
+      - name: Check committed baseline against the regression gate
+        run: python check_gate.py --candidate reports/baseline_holdout.json --config gate.yaml

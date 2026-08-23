@@ -16,3 +16,10 @@ ops-dashboard/*.tsbuildinfo
 *.tfstate
 *.tfstate.backup
 .terraform/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+evaluation/cache/
+.claude/

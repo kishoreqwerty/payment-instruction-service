@@ -12,6 +12,7 @@ import com.kishore.payments.core.outbox.OutboxWriter;
 import com.kishore.payments.core.state.InstructionState;
 import com.kishore.payments.core.state.InstructionStateWriter;
 import com.kishore.payments.core.state.TransitionResult;
+import com.kishore.payments.exception.classifier.ClassifierInvoker;
 import com.kishore.payments.exception.config.ExceptionMetrics;
 import com.kishore.payments.exception.config.ExceptionServiceProperties;
 import com.kishore.payments.exception.repair.FieldChange;
@@ -80,7 +81,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class ExceptionCaseService {
 
     private static final String REPAIRED_TOPIC = "payments.repaired";
-    private static final String ACTOR_PREFIX = "operator:";
 
     private final ExceptionCaseRepository cases;
     private final RepairActionRepository repairActions;
@@ -92,6 +92,7 @@ public class ExceptionCaseService {
     private final ExceptionServiceProperties properties;
     private final Clock clock;
     private final ExceptionCaseOpener caseOpener;
+    private final ClassifierInvoker classifierInvoker;
 
     public ExceptionCaseService(
             ExceptionCaseRepository cases,
@@ -103,7 +104,8 @@ public class ExceptionCaseService {
             ExceptionMetrics metrics,
             ExceptionServiceProperties properties,
             Clock clock,
-            ExceptionCaseOpener caseOpener) {
+            ExceptionCaseOpener caseOpener,
+            ClassifierInvoker classifierInvoker) {
         this.cases = cases;
         this.repairActions = repairActions;
         this.confirmations = confirmations;
@@ -114,6 +116,7 @@ public class ExceptionCaseService {
         this.properties = properties;
         this.clock = clock;
         this.caseOpener = caseOpener;
+        this.classifierInvoker = classifierInvoker;
     }
 
     // ------------------------------------------------------------------
@@ -135,7 +138,14 @@ public class ExceptionCaseService {
     // ------------------------------------------------------------------
 
     public void handleExceptionEvent(InstructionExceptionEvent event) {
-        caseOpener.handle(event);
+        // Phase 11: the classifier only ever runs on a freshly-opened case (see
+        // ExceptionCaseOpener.NewCase's own javadoc), and only after this method's own case-open
+        // transaction has committed -- classifierInvoker.invokeAsync hands off to a dedicated
+        // executor and returns immediately, so a slow or unavailable classifier can never delay
+        // this listener's own message processing.
+        caseOpener.handle(event).ifPresent(newCase -> classifierInvoker.invokeAsync(
+                newCase.exceptionCase().getCaseId(), newCase.exceptionCase().getFailureStage(), newCase.instruction(), newCase.detail(),
+                newCase.exceptionCase().getRepairAttempts()));
     }
 
     // ------------------------------------------------------------------
@@ -239,7 +249,7 @@ public class ExceptionCaseService {
         // would leave ValidationConsumer's own re-validation attempting an
         // illegal VALIDATED -> VALIDATED self-transition when it ran.
         TransitionResult repaired = stateWriter.transition(instruction.getInstructionId(), InstructionState.REPAIRED, ActorType.OPERATOR,
-                actorId(actor), null, "repair applied for case " + exceptionCase.getCaseId());
+                actor, null, "repair applied for case " + exceptionCase.getCaseId());
         outboxWriter.write(toRepairedMessage(instruction, exceptionCase, repaired));
 
         exceptionCase.setRepairAttempts(exceptionCase.getRepairAttempts() + 1);
@@ -278,7 +288,7 @@ public class ExceptionCaseService {
         // REPAIRED -> VALIDATED is ValidationConsumer's transition to make,
         // not this service's.
         TransitionResult repaired = stateWriter.transition(instruction.getInstructionId(), InstructionState.REPAIRED, ActorType.OPERATOR,
-                actorId(actor), null, "static-data retry for case " + caseId);
+                actor, null, "static-data retry for case " + caseId);
         outboxWriter.write(toRepairedMessage(instruction, exceptionCase, repaired));
 
         exceptionCase.setRepairAttempts(exceptionCase.getRepairAttempts() + 1);
@@ -344,7 +354,7 @@ public class ExceptionCaseService {
                 .findById(exceptionCase.getInstructionId())
                 .orElseThrow(() -> new NoSuchElementException("No payment instruction: " + exceptionCase.getInstructionId()));
 
-        stateWriter.transition(instruction.getInstructionId(), InstructionState.SENT, ActorType.OPERATOR, actorId(approvedBy), null,
+        stateWriter.transition(instruction.getInstructionId(), InstructionState.SENT, ActorType.OPERATOR, approvedBy, null,
                 confirmation.getJustification());
 
         exceptionCase.setJustification(confirmation.getJustification());
@@ -360,8 +370,8 @@ public class ExceptionCaseService {
                 .findById(exceptionCase.getInstructionId())
                 .orElseThrow(() -> new NoSuchElementException("No payment instruction: " + exceptionCase.getInstructionId()));
 
-        stateWriter.transition(instruction.getInstructionId(), InstructionState.EXCEPTION, ActorType.OPERATOR, actorId(actor), null, justification);
-        stateWriter.transition(instruction.getInstructionId(), InstructionState.REJECTED, ActorType.OPERATOR, actorId(actor), null,
+        stateWriter.transition(instruction.getInstructionId(), InstructionState.EXCEPTION, ActorType.OPERATOR, actor, null, justification);
+        stateWriter.transition(instruction.getInstructionId(), InstructionState.REJECTED, ActorType.OPERATOR, actor, null,
                 "investigation rejected: case " + caseId);
 
         exceptionCase.setJustification(justification);
@@ -406,10 +416,28 @@ public class ExceptionCaseService {
         PaymentInstructionEntity instruction = instructions
                 .findById(exceptionCase.getInstructionId())
                 .orElseThrow(() -> new NoSuchElementException("No payment instruction: " + exceptionCase.getInstructionId()));
-        stateWriter.transition(instruction.getInstructionId(), InstructionState.REJECTED, ActorType.OPERATOR, actorId(actor), null,
+        stateWriter.transition(instruction.getInstructionId(), InstructionState.REJECTED, ActorType.OPERATOR, actor, null,
                 "case " + caseId + " rejected");
 
         closeCase(exceptionCase, CaseStatus.REJECTED, Resolution.REJECTED);
+        return exceptionCase;
+    }
+
+    // ------------------------------------------------------------------
+    // Classifier feedback (Phase 11): a direct signal from the operator's own UI action --
+    // "Accept" or "Edit/Ignore" on the proposal panel -- not inferred after the fact by comparing
+    // the eventual repair to the suggestion. See .notes/reports/PHASE-11-REPORT.md section 5 for
+    // why a direct UI signal is more honest than a heuristic, and what limits it as an accuracy
+    // proxy regardless. Deliberately not maker-checker gated like a repair: recording what the
+    // operator thought of a suggestion changes nothing about the payment or the case's own
+    // workflow, so the lighter, single-actor bar that already gates viewing a case is enough.
+    // ------------------------------------------------------------------
+
+    @Transactional
+    public ExceptionCaseEntity recordClassifierFeedback(UUID caseId, boolean accepted) {
+        ExceptionCaseEntity exceptionCase = requireCase(caseId);
+        exceptionCase.setClassifierAccepted(accepted);
+        cases.save(exceptionCase);
         return exceptionCase;
     }
 
@@ -448,7 +476,4 @@ public class ExceptionCaseService {
                 event);
     }
 
-    private static String actorId(String actor) {
-        return ACTOR_PREFIX + actor;
-    }
 }

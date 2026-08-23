@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRepairableFields, useProposeRepair } from "../../api/queries";
 import type { FieldChange, InstructionSummaryResponse } from "../../api/types";
 import { ErrorBanner } from "../../components/ErrorBanner";
@@ -27,11 +27,31 @@ function currentValueFor(fieldPath: string, instruction: InstructionSummaryRespo
  * button says exactly that, never "Save," because a maker believing a
  * proposal already took effect is a real operational failure (brief §3).
  */
-export function RepairForm({ caseId, instruction }: { caseId: string; instruction: InstructionSummaryResponse }) {
+export function RepairForm({
+  caseId,
+  instruction,
+  suggestion,
+}: {
+  caseId: string;
+  instruction: InstructionSummaryResponse;
+  /** Set when the operator clicks "Use this suggestion" on ClassifierProposalPanel -- pre-fills
+   * and pre-checks that one field. Still just a starting point: the operator can clear the
+   * checkbox or edit the value like any other field before proposing. */
+  suggestion?: { fieldPath: string; value: string } | null;
+}) {
   const { data: fields } = useRepairableFields();
   const proposeRepair = useProposeRepair();
-  const [selected, setSelected] = useState<Record<string, boolean>>({});
-  const [values, setValues] = useState<Record<string, string>>({});
+  const [selected, setSelected] = useState<Record<string, boolean>>(() => (suggestion ? { [suggestion.fieldPath]: true } : {}));
+  const [values, setValues] = useState<Record<string, string>>(() => (suggestion ? { [suggestion.fieldPath]: suggestion.value } : {}));
+
+  // RepairForm is already mounted (case OPEN, maker signed in) by the time the operator clicks
+  // "Use this suggestion" on the panel above it -- the useState initializers above only cover a
+  // suggestion present at first render, so this effect covers the actual, later click.
+  useEffect(() => {
+    if (!suggestion) return;
+    setSelected((s) => ({ ...s, [suggestion.fieldPath]: true }));
+    setValues((v) => ({ ...v, [suggestion.fieldPath]: suggestion.value }));
+  }, [suggestion]);
 
   function toggle(fieldPath: string) {
     setSelected((s) => ({ ...s, [fieldPath]: !s[fieldPath] }));

@@ -8,13 +8,15 @@ import java.util.Optional;
 import org.springframework.stereotype.Component;
 
 /**
- * No ISO reason code: this is a plausibility check, not a rail-defined
- * defect. The debtor's country is read from the IBAN prefix, not a
- * separate field -- there is no other country signal on the instruction.
- * Deliberately bounded to a small set of single-currency countries: for a
- * country outside this table (most of the world), a mismatch is not
- * necessarily wrong -- a German debtor can genuinely originate a USD
- * payment -- so this rule stays silent rather than guessing.
+ * ISO 20022 external code CURR ("Currency of the payment is incorrect") applies here. This rule
+ * previously emitted no reason code, on the reasoning that a plausibility check isn't a
+ * rail-defined defect -- but CURR exists in the external code set precisely for this shape of
+ * problem, and {@code .notes/ARCHITECTURE.md} §6.1 never had a row for this rule at all. The
+ * debtor's country is read from the IBAN prefix, not a separate field -- there is no other
+ * country signal on the instruction. Deliberately bounded to a small set of single-currency
+ * countries: for a country outside this table (most of the world), a mismatch is not necessarily
+ * wrong -- a German debtor can genuinely originate a USD payment -- so this rule stays silent
+ * rather than guessing.
  */
 @Component
 public class CurrencyConsistentWithDebtorCountryRule implements ValidationRule {
@@ -38,7 +40,7 @@ public class CurrencyConsistentWithDebtorCountryRule implements ValidationRule {
             return Optional.empty();
         }
         return Optional.of(new FailureDetail(
-                null,
+                "CURR",
                 Repairability.REPAIRABLE,
                 "currency",
                 "Currency " + instruction.getCurrency() + " is inconsistent with debtor country " + debtorCountry

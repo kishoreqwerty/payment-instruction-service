@@ -20,6 +20,7 @@ export function ExceptionQueueScreen() {
   const [repairability, setRepairability] = useState<Repairability | "">("");
   const [assignedTo, setAssignedTo] = useState("");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const [page, setPage] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const navigate = useNavigate();
 
@@ -28,6 +29,13 @@ export function ExceptionQueueScreen() {
     return () => window.clearInterval(id);
   }, []);
 
+  // A page number from a previous, differently-filtered result set is almost certainly not
+  // valid for this one (it may not even exist) -- every filter/sort change starts back at the
+  // first page rather than risking a blank "page 4 of 1" the operator has to notice and undo.
+  useEffect(() => {
+    setPage(0);
+  }, [status, failureStage, reasonCode, repairability, assignedTo, sortDirection]);
+
   const { data, isLoading, error } = useCases({
     status: status || undefined,
     failureStage: failureStage || undefined,
@@ -35,9 +43,15 @@ export function ExceptionQueueScreen() {
     repairability: repairability || undefined,
     assignedTo: assignedTo || undefined,
     sort: `openedAt,${sortDirection}`,
+    page,
   });
 
   const cases = data?.content ?? [];
+  // The operator gauges workload from this number (brief), so it has to be the backend's true
+  // match count across every page -- data.content.length is capped at one page's worth (100)
+  // and silently reads as "100 cases" forever once the queue passes that size.
+  const totalCases = data?.totalElements ?? 0;
+  const totalPages = data?.totalPages ?? 0;
 
   return (
     <div>
@@ -88,7 +102,7 @@ export function ExceptionQueueScreen() {
             ))}
           </select>
         </div>
-        <span className="result-count">{isLoading ? "Loading…" : `${cases.length} case${cases.length === 1 ? "" : "s"}`}</span>
+        <span className="result-count">{isLoading ? "Loading…" : `${totalCases} case${totalCases === 1 ? "" : "s"}`}</span>
       </div>
 
       {isLoading && <div className="loading-state">Loading exception queue…</div>}
@@ -145,6 +159,20 @@ export function ExceptionQueueScreen() {
             ))}
           </tbody>
         </table>
+      )}
+
+      {!isLoading && totalPages > 1 && (
+        <div className="pagination">
+          <button type="button" className="btn" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
+            ← Previous
+          </button>
+          <span className="pagination-status">
+            Page {page + 1} of {totalPages}
+          </span>
+          <button type="button" className="btn" disabled={page + 1 >= totalPages} onClick={() => setPage((p) => p + 1)}>
+            Next →
+          </button>
+        </div>
       )}
     </div>
   );

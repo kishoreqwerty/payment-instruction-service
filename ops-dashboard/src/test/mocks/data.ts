@@ -29,6 +29,13 @@ export const openBusinessCase: CaseSummaryResponse = {
   justification: null,
   openedAt: hoursAgo(0.1),
   closedAt: null,
+  classifierCode: "AC01",
+  classifierRepairability: "REPAIRABLE",
+  classifierConf: 0.92,
+  classifierAccepted: null,
+  classifierSuggestedField: "creditorAccount",
+  classifierSuggestedValue: null,
+  classifierRationale: "The creditor IBAN fails the mod-97 checksum, a data-entry error an operator can correct and resubmit.",
 };
 
 export const pendingRepairAction: RepairActionResponse = {
@@ -71,6 +78,13 @@ export const investigationCase: CaseSummaryResponse = {
   justification: null,
   openedAt: hoursAgo(2),
   closedAt: null,
+  classifierCode: null,
+  classifierRepairability: null,
+  classifierConf: null,
+  classifierAccepted: null,
+  classifierSuggestedField: null,
+  classifierSuggestedValue: null,
+  classifierRationale: null,
 };
 
 export const pendingConfirmation: InvestigationConfirmationResponse = {
@@ -96,6 +110,7 @@ const instructionFor = (c: CaseSummaryResponse): InstructionSummaryResponse => (
   creditorAgentBic: "DEUTDEFFXXX",
   creditorName: c.creditorName,
   chargeBearer: "SHAR",
+  openCaseId: c.caseId,
 });
 
 export const caseDetails: Record<string, CaseDetailResponse> = {

@@ -22,6 +22,11 @@ import java.util.UUID;
  * instruction at a time per queue row would be an N+1 the API can avoid by
  * carrying them here instead. See PHASE-9-REPORT.md §5 for the full
  * account of this gap.
+ *
+ * <p>{@code classifier*} fields (Phase 11): all null if the classifier was unavailable when this
+ * case opened, or produced no usable proposal (a malformed response, per {@code ClassifierClient}).
+ * Never a system determination -- see ops-dashboard's own proposal panel, which the phase brief
+ * requires to visually read as a suggestion, not a pre-filled fact.
  */
 public record CaseSummaryResponse(
         UUID caseId,
@@ -41,7 +46,14 @@ public record CaseSummaryResponse(
         int repairAttempts,
         String justification,
         OffsetDateTime openedAt,
-        OffsetDateTime closedAt) {
+        OffsetDateTime closedAt,
+        String classifierCode,
+        Repairability classifierRepairability,
+        Double classifierConf,
+        Boolean classifierAccepted,
+        String classifierSuggestedField,
+        String classifierSuggestedValue,
+        String classifierRationale) {
 
     public static CaseSummaryResponse of(ExceptionCaseEntity entity, PaymentInstructionEntity instruction) {
         return new CaseSummaryResponse(
@@ -62,6 +74,13 @@ public record CaseSummaryResponse(
                 entity.getRepairAttempts(),
                 entity.getJustification(),
                 entity.getOpenedAt(),
-                entity.getClosedAt());
+                entity.getClosedAt(),
+                entity.getClassifierCode(),
+                entity.getClassifierRepairability() == null ? null : Repairability.valueOf(entity.getClassifierRepairability()),
+                entity.getClassifierConf(),
+                entity.getClassifierAccepted(),
+                entity.getClassifierSuggestedField(),
+                entity.getClassifierSuggestedValue(),
+                entity.getClassifierRationale());
     }
 }

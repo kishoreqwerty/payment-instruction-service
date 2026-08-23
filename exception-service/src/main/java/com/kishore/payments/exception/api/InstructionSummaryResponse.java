@@ -28,9 +28,20 @@ public record InstructionSummaryResponse(
         String creditorAccount,
         String creditorAgentBic,
         String creditorName,
-        String chargeBearer) {
+        String chargeBearer,
+        UUID openCaseId) {
 
+    /**
+     * {@code openCaseId} lets a lookup-screen result row navigate straight to the case, rather
+     * than dead-ending on a row with nowhere to go -- see {@link InstructionController#lookup}.
+     * Not meaningful from {@link CaseDetailResponse}, where the case is already known and this
+     * would just echo its own {@code caseId} back; that call site uses this overload.
+     */
     public static InstructionSummaryResponse of(PaymentInstructionEntity entity) {
+        return of(entity, null);
+    }
+
+    public static InstructionSummaryResponse of(PaymentInstructionEntity entity, UUID openCaseId) {
         return new InstructionSummaryResponse(
                 entity.getInstructionId(),
                 entity.getUetr(),
@@ -43,6 +54,7 @@ public record InstructionSummaryResponse(
                 entity.getCreditorAccount(),
                 entity.getCreditorAgentBic(),
                 entity.getCreditorName(),
-                entity.getChargeBearer());
+                entity.getChargeBearer(),
+                openCaseId);
     }
 }

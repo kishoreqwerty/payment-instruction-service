@@ -1,0 +1,23 @@
+# Regression gate thresholds (Phase 11 section 5/8). Checked by check_gate.py against a
+# candidate run's report (reports/candidate_holdout.json, produced by run_evaluation.py) and,
+# where a stored baseline exists (reports/baseline_holdout.json), against that baseline too.
+
+# Absolute floor on the candidate's own Cohen's kappa over the held-out set, for reason code and
+# repairability separately (phase brief section 5: "Cohen's kappa (reason code and
+# repairability separately)"). Both are checked on the "excluding_ambiguous" numbers
+# (run_evaluation.py) -- cases the labeller themselves flagged as genuinely arguable are excluded
+# from both sides of this threshold, so the gate measures disagreement with confident ground
+# truth, not disagreement with an admittedly-disputable label. Below this, agreement with hand
+# labels is not distinguishable enough from chance-corrected noise to trust in production.
+min_kappa_holdout:
+  reason_code: 0.80
+  repairability: 0.80
+
+# No reason-code class's recall may fall more than this many points below the stored baseline's
+# recall for that same class. Checked per class, not on a blended average, so a regression
+# hidden behind strong performance on common classes (AC01, RC01) still fails the gate.
+max_per_class_recall_regression: 0.05
+
+# McNemar's test significance level used to judge whether an observed per-class recall
+# regression is a real prompt/model change or sampling noise on a small held-out set.
+mcnemar_significance_level: 0.05

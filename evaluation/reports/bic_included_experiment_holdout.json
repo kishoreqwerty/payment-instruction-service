@@ -1,0 +1,15 @@
+{
+  "n_cases": 60,
+  "baseline_redacted": {
+    "reason_code_accuracy": 0.95,
+    "reason_code_kappa": 0.9371288857841424,
+    "repairability_accuracy": 0.8666666666666667,
+    "repairability_kappa": 0.7937258272453803
+  },
+  "bic_included": {
+    "reason_code_accuracy": 0.95,
+    "reason_code_kappa": 0.9367311072056238,
+    "repairability_accuracy": 0.8833333333333333,
+    "repairability_kappa": 0.8177083333333333
+  }
+}

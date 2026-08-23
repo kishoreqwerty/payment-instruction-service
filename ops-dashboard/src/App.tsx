@@ -6,6 +6,7 @@ import { ApprovalQueueScreen } from "./screens/ApprovalQueueScreen";
 import { CaseDetailScreen } from "./screens/CaseDetailScreen";
 import { ExceptionQueueScreen } from "./screens/ExceptionQueueScreen";
 import { InstructionLookupScreen } from "./screens/InstructionLookupScreen";
+import { InstructionTimelineScreen } from "./screens/InstructionTimelineScreen";
 
 /**
  * Brief §5 asks whether a checker should land on the approval queue instead
@@ -38,6 +39,7 @@ export function App() {
         <Route path="/cases/:caseId" element={<CaseDetailScreen />} />
         <Route path="/approvals" element={<ApprovalQueueScreen />} />
         <Route path="/lookup" element={<InstructionLookupScreen />} />
+        <Route path="/instructions/:instructionId" element={<InstructionTimelineScreen />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

@@ -49,7 +49,10 @@ class CallbackStatusApplier {
     @Transactional
     void applyStatus(UUID instructionId, InboundConfirmation confirmation, String railId) {
         PaymentInstructionEntity instruction = instructions.findById(instructionId).orElseThrow();
-        String actorId = "rail:" + railId;
+        // No "rail:" self-prefix here: ActorType.RAIL already says what kind of actor this is
+        // (TimelineEntry.ofTransition composes actorType + ":" + actorId) -- prefixing railId
+        // too just duplicates it in the rendered timeline ("RAIL:rail:SEPA").
+        String actorId = railId;
 
         InstructionState current = instruction.getState();
         if (current == InstructionState.SENT_UNCONFIRMED) {

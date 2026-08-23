@@ -93,6 +93,15 @@
     </dependency>
   </dependencies>
 
+  <properties>
+    <!-- Phase 11 (.notes/reports/PHASE-11-REPORT.md): EvaluationSetGenerator is a one-time
+         data-generation job, not a regression test: it drives ~200 real submissions through the
+         full pipeline (minutes, not seconds) and writes evaluation/labels/*.jsonl as a side
+         effect. Excluded from every normal run; re-run explicitly with
+         -Dgenerator.excludedGroups= when the labelled set genuinely needs regenerating. -->
+    <generator.excludedGroups>generator</generator.excludedGroups>
+  </properties>
+
   <build>
     <plugins>
       <plugin>
@@ -102,6 +111,9 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <excludedGroups>${generator.excludedGroups}</excludedGroups>
+        </configuration>
       </plugin>
     </plugins>
   </build>

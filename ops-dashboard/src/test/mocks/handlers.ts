@@ -126,4 +126,11 @@ export const handlers = [
     if (auth instanceof HttpResponse) return auth;
     return HttpResponse.json(data.openBusinessCase);
   }),
+
+  http.post(`${BASE}/v1/cases/:caseId/classifier-feedback`, async ({ request }) => {
+    const auth = requireAuth(request);
+    if (auth instanceof HttpResponse) return auth;
+    const body = (await request.json()) as { accepted: boolean };
+    return HttpResponse.json({ ...data.openBusinessCase, classifierAccepted: body.accepted });
+  }),
 ];

@@ -31,7 +31,7 @@ class RequestedExecutionDateNotPastRuleTest {
     void failsForAPastDate() {
         var instruction = InstructionFixtures.eurInstruction(BigDecimal.valueOf(500), LocalDate.of(2026, 6, 14));
         var violation = rule.validate(instruction).orElseThrow();
-        assertThat(violation.reasonCode()).isNull();
+        assertThat(violation.reasonCode()).isEqualTo("DT01");
         assertThat(violation.field()).isEqualTo("requestedExecDate");
     }
 }

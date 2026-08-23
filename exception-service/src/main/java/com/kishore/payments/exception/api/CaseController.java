@@ -20,7 +20,9 @@ import java.util.NoSuchElementException;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -64,8 +66,16 @@ public class CaseController {
             @RequestParam(required = false) Repairability repairability,
             @RequestParam(required = false) String assignedTo,
             Pageable pageable) {
+        // caseId (the primary key, always unique) is appended as a tiebreaker regardless of what
+        // sort the caller asked for: without one, two cases with the same openedAt -- the same
+        // age bucket, or bulk-seeded data sharing a timestamp -- have no defined relative order,
+        // and Postgres is free to return them in a different order on a later, otherwise
+        // identical query. That reads as the queue reshuffling between refreshes, when what's
+        // actually missing is a total order to begin with.
+        Pageable stableSort = PageRequest.of(
+                pageable.getPageNumber(), pageable.getPageSize(), pageable.getSort().and(Sort.by(Sort.Direction.ASC, "caseId")));
         Page<ExceptionCaseEntity> page =
-                cases.findAll(CaseSpecifications.matching(status, failureStage, reasonCode, repairability, assignedTo), pageable);
+                cases.findAll(CaseSpecifications.matching(status, failureStage, reasonCode, repairability, assignedTo), stableSort);
         // Batched, not one instruction lookup per row: see CaseSummaryResponse's own javadoc.
         Map<UUID, PaymentInstructionEntity> byInstructionId = instructions
                 .findAllById(page.getContent().stream().map(ExceptionCaseEntity::getInstructionId).toList())
@@ -96,6 +106,20 @@ public class CaseController {
     @PreAuthorize("hasRole('MAKER')")
     public CaseSummaryResponse retry(@PathVariable UUID caseId, Principal principal) {
         ExceptionCaseEntity exceptionCase = caseService.retryStaticData(caseId, principal.getName());
+        return CaseSummaryResponse.of(exceptionCase, instructionOf(exceptionCase));
+    }
+
+    /**
+     * Phase 11: a direct record of what the operator did with the classifier's proposal --
+     * "Accept" or "Edit/Ignore" on the panel, called regardless of whether they go on to submit a
+     * repair at all. Not maker-checker gated, and not derived from comparing the eventual repair
+     * to the suggestion afterward: see ExceptionCaseService.recordClassifierFeedback's own comment
+     * for why a direct UI signal is the more honest choice here.
+     */
+    @PostMapping("/{caseId}/classifier-feedback")
+    @PreAuthorize("hasRole('MAKER')")
+    public CaseSummaryResponse classifierFeedback(@PathVariable UUID caseId, @RequestBody ClassifierFeedbackRequest body) {
+        ExceptionCaseEntity exceptionCase = caseService.recordClassifierFeedback(caseId, body.accepted());
         return CaseSummaryResponse.of(exceptionCase, instructionOf(exceptionCase));
     }
 

@@ -16,6 +16,13 @@
   <name>exception-service</name>
   <description>Owns the exception case lifecycle: classification, assignment, repair, maker-checker approval, and terminal rejection or resubmission</description>
 
+  <properties>
+    <!-- Phase 11: overridable from the command line (-Dclassifier.live.excludedGroups=), unlike a
+         bare hardcoded <excludedGroups>live</excludedGroups>, which -DexcludedGroups= on its own
+         cannot override without this indirection. -->
+    <classifier.live.excludedGroups>live</classifier.live.excludedGroups>
+  </properties>
+
   <dependencies>
     <dependency>
       <groupId>com.kishore.payments</groupId>
@@ -75,6 +82,15 @@
       <scope>runtime</scope>
     </dependency>
 
+    <!-- Phase 11 (.notes/reports/PHASE-11-REPORT.md): the exception classifier's own model
+         client. Named per CLAUDE.md's dependency rule: the phase brief explicitly specifies
+         "Anthropic Java SDK" for ClassifierClient. -->
+    <dependency>
+      <groupId>com.anthropic</groupId>
+      <artifactId>anthropic-java</artifactId>
+      <version>2.57.0</version>
+    </dependency>
+
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
@@ -124,6 +140,15 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <!-- Phase 11 (.notes/reports/PHASE-11-REPORT.md): tests tagged "live" make a real,
+               billed call to the Anthropic API and are excluded from every normal run (including
+               CI) so this module never requires ANTHROPIC_API_KEY to build. Run them explicitly
+               with -Dgroups=live -DexcludedGroups= when a key is available and you want to verify
+               the client against the real API, not just against the fake endpoints the rest of
+               ClassifierClientTest uses. -->
+          <excludedGroups>${classifier.live.excludedGroups}</excludedGroups>
+        </configuration>
       </plugin>
       <plugin>
         <groupId>org.springframework.boot</groupId>

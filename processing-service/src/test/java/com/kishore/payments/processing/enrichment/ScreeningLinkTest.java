@@ -31,6 +31,7 @@ class ScreeningLinkTest {
                 .isInstanceOfSatisfying(BusinessFailureException.class, e -> {
                     assertThat(e.stage()).isEqualTo(FailureStage.ENRICHMENT);
                     assertThat(e.details().get(0).repairability()).isEqualTo(Repairability.UNREPAIRABLE);
+                    assertThat(e.details().get(0).reasonCode()).isEqualTo("RR04");
                 });
     }
 }

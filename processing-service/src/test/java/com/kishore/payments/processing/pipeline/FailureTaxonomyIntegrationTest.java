@@ -1,18 +1,25 @@
 package com.kishore.payments.processing.pipeline;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.kishore.payments.core.domain.Repairability;
 import com.kishore.payments.core.instruction.InstructionEventEntity;
 import com.kishore.payments.core.instruction.PaymentInstructionEntity;
 import com.kishore.payments.core.state.InstructionState;
 import com.kishore.payments.processing.AbstractProcessingIntegrationTest;
+import com.kishore.payments.processing.enrichment.EnrichmentChain;
+import com.kishore.payments.processing.failure.BusinessFailureException;
+import com.kishore.payments.processing.failure.FailureDetail;
+import com.kishore.payments.processing.validation.ValidationChain;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.Comparator;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * Each failure taxonomy row (.notes/ARCHITECTURE.md §6.1) produces the
@@ -21,6 +28,12 @@ import org.junit.jupiter.api.Test;
  * mock of the taxonomy.
  */
 class FailureTaxonomyIntegrationTest extends AbstractProcessingIntegrationTest {
+
+    @Autowired
+    private ValidationChain validationChain;
+
+    @Autowired
+    private EnrichmentChain enrichmentChain;
 
     @Test
     void invalidIbanProducesAc01Repairable() {
@@ -57,16 +70,16 @@ class FailureTaxonomyIntegrationTest extends AbstractProcessingIntegrationTest {
     }
 
     @Test
-    void currencyInconsistentWithDebtorCountryProducesNoCodeRepairable() {
+    void currencyInconsistentWithDebtorCountryProducesCurrRepairable() {
         // German (EUR-zone) debtor IBAN, USD currency.
         PaymentInstructionEntity instruction = entity(
                 "DE89370400440532013000", "DEUTDEFFXXX", "CHASUS33XXX", new BigDecimal("500.00"), "USD", LocalDate.now(clock));
 
-        assertExceptionOutcome(instruction, null, Repairability.REPAIRABLE);
+        assertExceptionOutcome(instruction, "CURR", Repairability.REPAIRABLE);
     }
 
     @Test
-    void pastRequestedExecutionDateProducesNoCodeRepairable() {
+    void pastRequestedExecutionDateProducesDt01Repairable() {
         PaymentInstructionEntity instruction = entity(
                 "DE89370400440532013000",
                 "DEUTDEFFXXX",
@@ -75,7 +88,7 @@ class FailureTaxonomyIntegrationTest extends AbstractProcessingIntegrationTest {
                 "EUR",
                 LocalDate.now(clock).minusDays(1));
 
-        assertExceptionOutcome(instruction, null, Repairability.REPAIRABLE);
+        assertExceptionOutcome(instruction, "DT01", Repairability.REPAIRABLE);
     }
 
     @Test
@@ -110,7 +123,73 @@ class FailureTaxonomyIntegrationTest extends AbstractProcessingIntegrationTest {
         assertExceptionOutcome(instruction, "AG01", Repairability.REPAIRABLE);
     }
 
+    /**
+     * Runs every {@link ValidationChain}-registered rule against one instruction engineered to
+     * trip it -- and only it -- and asserts every resulting {@link FailureDetail} carries a
+     * non-null reason code. {@code validationChain} is Spring-autowired with the real {@code
+     * List<ValidationRule>} (see {@code ValidationChain}'s own constructor), so a new rule added
+     * later is picked up here automatically; it only fails to be *exercised* if none of these
+     * fixtures happen to trigger it, same as any behaviour-driven test. This is the standing
+     * regression test for the gap this class's own history already hit twice (currency, past
+     * execution date): a rule that validates correctly but forgets to name a reason code.
+     */
+    @Test
+    void everyValidationRuleCarriesAReasonCode() {
+        List<PaymentInstructionEntity> oneDefectEach = List.of(
+                entity("DE00370400440532013000", "DEUTDEFFXXX", "DEUTDEFFXXX", new BigDecimal("500.00"), "EUR", LocalDate.now(clock)),
+                entity("DE89370400440532013000", "NOTABIC", "DEUTDEFFXXX", new BigDecimal("500.00"), "EUR", LocalDate.now(clock)),
+                entity("DE89370400440532013000", "DEUTDEFFXXX", "NOTABIC", new BigDecimal("500.00"), "EUR", LocalDate.now(clock)),
+                entity("DE89370400440532013000", "DEUTDEFFXXX", "DEUTDEFFXXX", new BigDecimal("0.001"), "EUR", LocalDate.now(clock)),
+                entity("DE89370400440532013000", "DEUTDEFFXXX", "CHASUS33XXX", new BigDecimal("500.00"), "USD", LocalDate.now(clock)),
+                entity(
+                        "DE89370400440532013000", "DEUTDEFFXXX", "DEUTDEFFXXX", new BigDecimal("500.00"), "EUR",
+                        LocalDate.now(clock).minusDays(1)));
+
+        List<FailureDetail> everyViolationSeen = new java.util.ArrayList<>();
+        for (PaymentInstructionEntity fixture : oneDefectEach) {
+            List<FailureDetail> violations = validationChain.validate(fixture);
+            assertThat(violations).as("fixture %s was expected to trigger at least one rule", fixture.getDebtorAccount()).isNotEmpty();
+            everyViolationSeen.addAll(violations);
+        }
+
+        assertThat(everyViolationSeen).allSatisfy(v -> assertThat(v.reasonCode()).as("%s", v.detail()).isNotNull());
+    }
+
+    /**
+     * Same invariant as {@link #everyValidationRuleCarriesAReasonCode()}, for the enrichment
+     * links capable of producing a {@link FailureDetail} at all ({@code CorrespondentResolutionLink},
+     * {@code NostroAccountLink} -- {@code ScreeningLink}'s own reason code is asserted directly in
+     * {@code ScreeningLinkTest}, since triggering it needs a non-default {@code ScreeningProvider}
+     * this Spring context doesn't wire in; the cutoff/business-day/charge-bearer/refdata-version
+     * links never throw at all, per {@code EnrichmentLink}'s own javadoc).
+     */
+    @Test
+    void everyEnrichmentFailureCarriesAReasonCode() {
+        PaymentInstructionEntity noCorrespondent = entity(
+                "PL61109010140000071219812874", "CHASUS33XXX", "UNKNUS33XXX", new BigDecimal("500.00"), "USD", LocalDate.now(clock));
+        assertThatThrownBy(() -> enrichmentChain.enrich(noCorrespondent))
+                .isInstanceOfSatisfying(
+                        BusinessFailureException.class,
+                        e -> assertThat(e.details()).allSatisfy(d -> assertThat(d.reasonCode()).as("%s", d.detail()).isNotNull()));
+
+        PaymentInstructionEntity noNostro = entity(
+                "PL61109010140000071219812874", "CHASUS33XXX", "SCBLUS33XXX", new BigDecimal("500.00"), "USD", LocalDate.now(clock));
+        assertThatThrownBy(() -> enrichmentChain.enrich(noNostro))
+                .isInstanceOfSatisfying(
+                        BusinessFailureException.class,
+                        e -> assertThat(e.details()).allSatisfy(d -> assertThat(d.reasonCode()).as("%s", d.detail()).isNotNull()));
+    }
+
+    /**
+     * {@code expectedReasonCode} is required, never {@code null}: every one of this taxonomy's
+     * VALIDATION/ENRICHMENT/ROUTING rows carries a real ISO 20022 external code (see the
+     * standalone assertion of that same invariant below, {@link #everyValidationRuleCarriesAReasonCode()}
+     * and {@link #everyEnrichmentFailureCarriesAReasonCode()}) -- a taxonomy row without one is
+     * exactly the spec gap this class exists to catch, not a legitimate outcome to assert.
+     */
     private void assertExceptionOutcome(PaymentInstructionEntity instruction, String expectedReasonCode, Repairability expectedRepairability) {
+        assertThat(expectedReasonCode).as("every failure taxonomy row asserted here must carry a real ISO reason code").isNotNull();
+
         seedReceived(instruction);
         outboxPublisher.publishBatch();
 
@@ -132,9 +211,7 @@ class FailureTaxonomyIntegrationTest extends AbstractProcessingIntegrationTest {
                 String.class,
                 instruction.getInstructionId());
         assertThat(payload).contains(expectedRepairability.name());
-        if (expectedReasonCode != null) {
-            assertThat(payload).contains(expectedReasonCode);
-        }
+        assertThat(payload).contains(expectedReasonCode);
     }
 
     private static PaymentInstructionEntity entity(
