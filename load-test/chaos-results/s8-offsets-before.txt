@@ -1,0 +1,77 @@
+=== pre-kill consumer group offsets ===
+GROUP        processing-service
+COORDINATOR  0
+STATE        Stable
+BALANCER     range
+MEMBERS      42
+TOTAL-LAG    22
+
+TOPIC               PARTITION  CURRENT-OFFSET  LOG-START-OFFSET  LOG-END-OFFSET  LAG   MEMBER-ID                                                            CLIENT-ID                       HOST
+payments.enriched   0          3206            0                 3208            2     consumer-processing-service-31-c0d19dd0-0d0c-43a5-84d8-600d2e8bc845  consumer-processing-service-31  172.19.0.1
+payments.enriched   1          3177            0                 3177            0     consumer-processing-service-32-f660afc0-aeab-433f-a0cf-4956c8cd816e  consumer-processing-service-32  172.19.0.1
+payments.enriched   2          3249            0                 3249            0     consumer-processing-service-33-b0d4feac-6a2f-41f5-a6cd-ef019b4a5fbf  consumer-processing-service-33  172.19.0.1
+payments.enriched   3          3168            0                 3168            0     consumer-processing-service-34-e531e85d-8cf7-4952-8d9f-e126becbeab8  consumer-processing-service-34  172.19.0.1
+payments.enriched   4          3133            0                 3133            0     consumer-processing-service-35-c3a54f48-6503-4473-a4dc-d33d7bb41913  consumer-processing-service-35  172.19.0.1
+payments.enriched   5          3168            0                 3168            0     consumer-processing-service-36-fd7a09c3-dfac-4342-b818-c5768e6ff7dd  consumer-processing-service-36  172.19.0.1
+payments.enriched   6          3183            0                 3184            1     consumer-processing-service-37-7ed8f790-36cd-480b-92a2-3e41de4bebf3  consumer-processing-service-37  172.19.0.1
+payments.enriched   7          3191            0                 3192            1     consumer-processing-service-38-0ac09544-a0e4-4868-9c47-5afff19aee2f  consumer-processing-service-38  172.19.0.1
+payments.enriched   8          3227            0                 3227            0     consumer-processing-service-39-86786327-9a1f-4f0e-8f80-691fdebfe1f9  consumer-processing-service-39  172.19.0.1
+payments.enriched   9          3187            0                 3187            0     consumer-processing-service-40-8e1c6e88-03b2-4918-8bee-3a7e4faf1c97  consumer-processing-service-40  172.19.0.1
+payments.enriched   10         3147            0                 3147            0     consumer-processing-service-41-970d4551-fb09-4b4f-9cb0-2fb96c953356  consumer-processing-service-41  172.19.0.1
+payments.enriched   11         3225            0                 3228            3     consumer-processing-service-42-8caec76e-5afd-4904-9e63-231fb7dec3a4  consumer-processing-service-42  172.19.0.1
+payments.received   0          3474            0                 3474            0     consumer-processing-service-1-7fffe719-c544-4e89-9692-c00ab2a915b4   consumer-processing-service-1   172.19.0.1
+payments.received   1          3448            0                 3449            1     consumer-processing-service-10-c05dada2-0e25-4d61-89d8-9c9f24eff4b7  consumer-processing-service-10  172.19.0.1
+payments.received   2          3497            0                 3497            0     consumer-processing-service-11-9757048d-b8cb-4fb7-9029-9e9afa3323f2  consumer-processing-service-11  172.19.0.1
+payments.received   3          3444            0                 3446            2     consumer-processing-service-12-06848f3a-7b3c-4861-8502-be67f65f2daa  consumer-processing-service-12  172.19.0.1
+payments.received   4          3421            0                 3421            0     consumer-processing-service-2-5c6b05b9-a1e9-4bfd-9dc9-ba624c4e5a07   consumer-processing-service-2   172.19.0.1
+payments.received   5          3446            0                 3446            0     consumer-processing-service-3-00d2564b-3f8f-4fa7-a5b3-7aa513056dd6   consumer-processing-service-3   172.19.0.1
+payments.received   6          3455            0                 3455            0     consumer-processing-service-4-6f254012-efda-4453-a4ed-a14937687814   consumer-processing-service-4   172.19.0.1
+payments.received   7          3444            0                 3447            3     consumer-processing-service-5-3cee1853-4c23-48b1-be69-9177bdf66d39   consumer-processing-service-5   172.19.0.1
+payments.received   8          3494            0                 3494            0     consumer-processing-service-6-f6f5d910-5015-4d5a-849b-9101f644c2ec   consumer-processing-service-6   172.19.0.1
+payments.received   9          3453            0                 3455            2     consumer-processing-service-7-c1f1822a-5b71-490b-a720-801e372c09ce   consumer-processing-service-7   172.19.0.1
+payments.received   10         3431            0                 3431            0     consumer-processing-service-8-e2848246-390e-40ec-bd14-48f1c2834b74   consumer-processing-service-8   172.19.0.1
+payments.received   11         3527            0                 3527            0     consumer-processing-service-9-45bae7fe-01a0-44da-8eaf-102c417a1c08   consumer-processing-service-9   172.19.0.1
+payments.repaired   0          -               0                 0               -     consumer-processing-service-13-4b424c65-9a3a-4b8f-bb09-42bcc8652b67  consumer-processing-service-13  172.19.0.1
+payments.repaired   1          -               0                 0               -     consumer-processing-service-14-8d741d64-15d2-4b53-82fc-a5ab212f25c8  consumer-processing-service-14  172.19.0.1
+payments.repaired   2          -               0                 0               -     consumer-processing-service-15-b9b53e14-8adc-4b40-825d-ac2f3c8a8975  consumer-processing-service-15  172.19.0.1
+payments.repaired   3          -               0                 0               -     consumer-processing-service-16-35285fcd-3f5f-4509-91c2-35e37aa5f681  consumer-processing-service-16  172.19.0.1
+payments.repaired   4          -               0                 0               -     consumer-processing-service-17-884ebc8a-683a-4735-b653-b91ac3441349  consumer-processing-service-17  172.19.0.1
+payments.repaired   5          -               0                 0               -     consumer-processing-service-18-9094d1c1-4a8d-4bba-a38f-ff0d1164d73f  consumer-processing-service-18  172.19.0.1
+payments.validated  0          3208            0                 3208            0     consumer-processing-service-19-d0c5201f-8bf2-4def-a23b-3fb8b571fcf3  consumer-processing-service-19  172.19.0.1
+payments.validated  1          3177            0                 3178            1     consumer-processing-service-20-d876b9c9-5081-416a-a3e9-c760028c5f3c  consumer-processing-service-20  172.19.0.1
+payments.validated  2          3249            0                 3249            0     consumer-processing-service-21-57babfe6-308d-47f0-b0a8-61b21ce261ef  consumer-processing-service-21  172.19.0.1
+payments.validated  3          3168            0                 3168            0     consumer-processing-service-22-b05871b2-5110-4199-bd7c-2df2219461e6  consumer-processing-service-22  172.19.0.1
+payments.validated  4          3133            0                 3133            0     consumer-processing-service-23-db9adb3d-647b-48cb-b2d3-9f194a3e4c76  consumer-processing-service-23  172.19.0.1
+payments.validated  5          3168            0                 3169            1     consumer-processing-service-24-2e3ea2be-dbb0-42fa-8619-4353cb47a9e6  consumer-processing-service-24  172.19.0.1
+payments.validated  6          3185            0                 3186            1     consumer-processing-service-25-b12ab85e-f06d-49ff-8b18-2f25f854fa6f  consumer-processing-service-25  172.19.0.1
+payments.validated  7          3192            0                 3193            1     consumer-processing-service-26-0269a963-2367-4b35-95f5-e53636295456  consumer-processing-service-26  172.19.0.1
+payments.validated  8          3227            0                 3228            1     consumer-processing-service-27-e359c299-1d91-494b-a31b-336aeee7ee74  consumer-processing-service-27  172.19.0.1
+payments.validated  9          3187            0                 3188            1     consumer-processing-service-28-74d3b0b4-996f-4b67-b23f-048080a588f4  consumer-processing-service-28  172.19.0.1
+payments.validated  10         3147            0                 3147            0     consumer-processing-service-29-47442cdd-9ec4-4446-b0d2-e36bdff57b00  consumer-processing-service-29  172.19.0.1
+payments.validated  11         3228            0                 3229            1     consumer-processing-service-30-e649d8fd-f96b-4239-9a7a-5555b5eeaec2  consumer-processing-service-30  172.19.0.1
+GROUP        settlement-gateway
+COORDINATOR  0
+STATE        Stable
+BALANCER     range
+MEMBERS      12
+TOTAL-LAG    8
+
+TOPIC            PARTITION  CURRENT-OFFSET  LOG-START-OFFSET  LOG-END-OFFSET  LAG   MEMBER-ID                                                            CLIENT-ID                       HOST
+payments.routed  0          3208            0                 3208            0     consumer-settlement-gateway-1-b8767df7-c9ae-450f-badb-eac1e0f9b4e4   consumer-settlement-gateway-1   172.19.0.1
+payments.routed  1          3180            0                 3182            2     consumer-settlement-gateway-10-34c1aea8-0cb5-4701-a5fa-6aa916e48fd1  consumer-settlement-gateway-10  172.19.0.1
+payments.routed  2          3250            0                 3252            2     consumer-settlement-gateway-11-29bf3a5f-363b-4990-8171-1223c56c4972  consumer-settlement-gateway-11  172.19.0.1
+payments.routed  3          3171            0                 3171            0     consumer-settlement-gateway-12-489c90cd-ff61-4d4b-9162-6fd5be10d958  consumer-settlement-gateway-12  172.19.0.1
+payments.routed  4          3134            0                 3135            1     consumer-settlement-gateway-2-4ccadfb1-cde5-4347-b758-09bf77afcbbb   consumer-settlement-gateway-2   172.19.0.1
+payments.routed  5          3170            0                 3170            0     consumer-settlement-gateway-3-d451bbf0-0778-4d27-8fda-834878edce9f   consumer-settlement-gateway-3   172.19.0.1
+payments.routed  6          3186            0                 3186            0     consumer-settlement-gateway-4-c1a47154-3f39-4b44-9089-741c1bf79347   consumer-settlement-gateway-4   172.19.0.1
+payments.routed  7          3195            0                 3196            1     consumer-settlement-gateway-5-50f3d471-0d6a-42df-b48d-457ae0a121c9   consumer-settlement-gateway-5   172.19.0.1
+payments.routed  8          3230            0                 3230            0     consumer-settlement-gateway-6-0ec85a18-51bf-489c-a86f-392139fe3524   consumer-settlement-gateway-6   172.19.0.1
+payments.routed  9          3189            0                 3189            0     consumer-settlement-gateway-7-d880e1d5-810d-455f-ab36-936491f83710   consumer-settlement-gateway-7   172.19.0.1
+payments.routed  10         3147            0                 3147            0     consumer-settlement-gateway-8-34622278-9ba7-4cf1-9965-b2f0548c9e16   consumer-settlement-gateway-8   172.19.0.1
+payments.routed  11         3230            0                 3232            2     consumer-settlement-gateway-9-477a032e-6a21-4383-a62c-122d22560504   consumer-settlement-gateway-9   172.19.0.1
+GROUP        intake-service
+COORDINATOR  0
+STATE        Dead
+BALANCER     
+MEMBERS      0
+TOTAL-LAG    0

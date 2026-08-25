@@ -1,0 +1,22 @@
+=== pre-kill consumer group offsets (v2) ===
+GROUP        processing-service
+COORDINATOR  0
+STATE        Stable
+BALANCER     range
+MEMBERS      42
+TOTAL-LAG    0
+
+TOPIC               LAG
+payments.enriched   0
+payments.received   0
+payments.repaired   0
+payments.validated  0
+GROUP        settlement-gateway
+COORDINATOR  0
+STATE        Stable
+BALANCER     range
+MEMBERS      12
+TOTAL-LAG    31
+
+TOPIC            LAG
+payments.routed  31

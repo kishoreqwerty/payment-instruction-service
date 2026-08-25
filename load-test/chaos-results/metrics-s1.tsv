@@ -1,0 +1,7 @@
+timestamp	processing_consumer_total_lag	outbox_pending_count	outbox_oldest_pending_s	gateway_p95_dispatch_s	rail_simulator_up
+2026-08-25T19:59:20Z	0	0	0	NA	1.0
+2026-08-25T20:00:20Z	0	15	0.018849	NA	1.0
+2026-08-25T20:01:20Z	5	31	0.018215	NA	1.0
+2026-08-25T20:02:21Z	27	17	0.054565	NA	1.0
+2026-08-25T20:03:22Z	0	0	0	NA	1.0
+2026-08-25T20:04:22Z	0	0	0	NA	1.0
