@@ -5,6 +5,7 @@ import io.micrometer.tracing.Span;
 import io.micrometer.tracing.Tracer;
 import io.micrometer.tracing.propagation.Propagator;
 import java.nio.charset.StandardCharsets;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.time.Duration;
 import java.time.Instant;
@@ -69,18 +70,38 @@ import org.springframework.transaction.support.TransactionTemplate;
  * {@code max.in.flight.requests.per.connection=1} (see
  * {@link OutboxProducerFactory}): the client library itself serializes
  * requests on the wire in call order, so blocking per record bought nothing
- * but latency.
+ * but latency. Phase 12 tried raising the in-flight limit to 5 to see
+ * whether wire-level serialization was the sustained-load bottleneck; it
+ * measurably was not (.notes/reports/PHASE-12-REPORT.md §4.3), and the
+ * change was reverted rather than kept for a correctness guarantee it
+ * bought no throughput for.
  */
 @Component
 public class OutboxPublisher {
 
     private static final Logger log = LoggerFactory.getLogger(OutboxPublisher.class);
 
+    // Depends on idx_outbox_unpublished being keyed on (outbox_id) alone, not
+    // (published_at, outbox_id) -- see V6__fix_outbox_unpublished_index.sql for why a
+    // published_at leading column, even though constant within this partial index,
+    // stopped Postgres's planner from recognising the index as satisfying "ORDER BY
+    // outbox_id" at all: with the old index shape this query silently fell back to a
+    // primary-key scan that had to walk past every already-published row to reach an
+    // unpublished one, a cost that grows with total table history rather than backlog
+    // size (found under Phase 12 load testing, PHASE-12-REPORT.md section 4.1).
     private static final String SELECT_BATCH_SQL = "SELECT outbox_id, aggregate_id, topic, partition_key, headers, payload "
             + "FROM core.outbox WHERE published_at IS NULL AND pg_try_advisory_xact_lock(hashtext(aggregate_id::text)) "
             + "ORDER BY outbox_id LIMIT ? FOR UPDATE SKIP LOCKED";
 
-    private static final String MARK_PUBLISHED_SQL = "UPDATE core.outbox SET published_at = now() WHERE outbox_id = ?";
+    // A single-row ? form existed here before Phase 12 (.notes/reports/PHASE-12-REPORT.md
+    // §4.4) and was called once per successfully-published row, inside the same sequential
+    // loop that awaits each row's own Kafka future -- up to batchSize (100) individual JDBC
+    // round trips per publishBatch() invocation. Measured directly against
+    // payment_outbox_publish_duration_seconds under load: ~41-52ms average per row, implying
+    // a full batch's own total processing time ran well past this class's own 50ms poll
+    // interval, independent of and in addition to the SELECT-side defect V6 fixed. ANY(?)
+    // collapses however many rows a batch actually published into one round trip.
+    private static final String MARK_PUBLISHED_SQL = "UPDATE core.outbox SET published_at = now() WHERE outbox_id = ANY(?)";
 
     private static final String PENDING_SQL = "SELECT topic, count(*) AS pending_count, "
             + "extract(epoch FROM (now() - min(created_at))) AS oldest_seconds "
@@ -160,12 +181,18 @@ public class OutboxPublisher {
                 sends.add(new PendingSend(row, started, future, publishSpan));
             }
 
-            // Then block once, in the same order, to learn the outcomes and
-            // mark rows published.
+            // Then block once, in the same order, to learn the outcomes --
+            // still sequential (ordering and "stop at first failure" both
+            // depend on learning outcomes in send order), but marking
+            // published is no longer one UPDATE per row: outbox_ids of
+            // every row that actually got acked are collected here and
+            // marked in one batched round trip below, after this loop ends,
+            // rather than once per iteration inside it.
+            List<Long> publishedIds = new ArrayList<>(sends.size());
             for (PendingSend send : sends) {
                 try {
                     send.future().get();
-                    jdbc.update(MARK_PUBLISHED_SQL, send.row().outboxId());
+                    publishedIds.add(send.row().outboxId());
                     metrics.recordPublished(send.row().topic(), true);
                     metrics.recordPublishDuration(Duration.between(send.started(), Instant.now()));
                     endSpan(send.span(), null);
@@ -182,6 +209,7 @@ public class OutboxPublisher {
                     break;
                 }
             }
+            markPublished(publishedIds);
 
             refreshPendingMetrics();
         });
@@ -262,6 +290,15 @@ public class OutboxPublisher {
             log.warn("Could not parse outbox headers JSON, producing without them: {}", headersJson, e);
             return Map.of();
         }
+    }
+
+    private void markPublished(List<Long> outboxIds) {
+        if (outboxIds.isEmpty()) {
+            return;
+        }
+        jdbc.update(MARK_PUBLISHED_SQL, (PreparedStatement ps) -> {
+            ps.setArray(1, ps.getConnection().createArrayOf("bigint", outboxIds.toArray()));
+        });
     }
 
     private void refreshPendingMetrics() {

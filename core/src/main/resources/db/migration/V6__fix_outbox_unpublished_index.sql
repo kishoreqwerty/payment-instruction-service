@@ -1,0 +1,33 @@
+-- Versioned V6, not V2, despite being core's own second migration: core's migrations are
+-- combined with every service's own migration directory into one Flyway history per
+-- service (see ServiceBoot.CORE_MIGRATIONS / each service's application.yml), and
+-- processing-service (V2), settlement-gateway (V2, V3) and exception-service (V2-V5)
+-- already claim every version number through V5 in that shared numbering space -- a V2
+-- here would collide exactly the way CROSS-SERVICE-INTEGRATION-DEFECTS.md's earlier
+-- incident did, just from the opposite direction (core colliding with a service, not two
+-- services colliding with each other). Worth a note for whoever adds core's next
+-- migration: this numbering space is shared and uncoordinated across modules, and the
+-- next core migration needs to check every sibling service's highest version, not just
+-- core's own.
+--
+-- Phase 12 load test (.notes/reports/PHASE-12-REPORT.md section 4.1): the original
+-- idx_outbox_unpublished, defined as (published_at, outbox_id) WHERE published_at IS NULL,
+-- includes published_at as the index's leading sort column even though every entry in a
+-- partial index whose predicate is "published_at IS NULL" necessarily has the identical
+-- published_at value -- it carries no discriminating information and adds nothing to the
+-- filter (already guaranteed by the predicate) or to fairness. What it does do: Postgres's
+-- planner evaluates OutboxPublisher's SELECT_BATCH_SQL (... WHERE published_at IS NULL ...
+-- ORDER BY outbox_id LIMIT ? ...) against the index's declared sort order, (published_at,
+-- outbox_id) -- and does not collapse the constant leading column away when matching it
+-- against a plain "ORDER BY outbox_id" requirement. The index was never chosen for this
+-- query as a result; the planner fell back to a scan of the primary key ordered by
+-- outbox_id across the WHOLE table (published and unpublished rows alike), filtering as it
+-- went -- correct, but requiring it to walk past every already-published row with a lower
+-- outbox_id before reaching an unpublished one. Confirmed directly against a live, heavily
+-- backlogged table (EXPLAIN ANALYZE, ~1.9M rows): the old index shape's real query took
+-- 335-1150ms per poll cycle against a 50ms poll interval; dropping published_at from the
+-- index (keeping the WHERE clause, which already encodes the same guarantee) drops the
+-- same query to ~0.2ms -- a three-to-five-thousand-fold difference, not a marginal tune.
+DROP INDEX IF EXISTS core.idx_outbox_unpublished;
+
+CREATE INDEX IF NOT EXISTS idx_outbox_unpublished ON core.outbox (outbox_id) WHERE published_at IS NULL;

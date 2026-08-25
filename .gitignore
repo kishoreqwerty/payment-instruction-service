@@ -23,3 +23,6 @@ __pycache__/
 .venv/
 evaluation/cache/
 .claude/
+load-test/corpus/
+load-test/env-baselines/
+load-test/results/
