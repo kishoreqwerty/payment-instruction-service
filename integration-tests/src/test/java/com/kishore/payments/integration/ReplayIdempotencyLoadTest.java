@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
@@ -141,13 +142,27 @@ class ReplayIdempotencyLoadTest {
         }
     }
 
-    /** Submits every row in the corpus concurrently (virtual thread per request) and returns how many responses reported {@code duplicate: true}. */
+    // Bounds how many submissions this test has in flight at once, rather than firing all 10,000
+    // as simultaneous new connections (PHASE-12-REPORT.md §5: the unbounded version dropped
+    // connections at intake-service's default Tomcat accept queue -- a real finding about the
+    // server, but not a realistic client pattern to assert 0 failures against). 100 is chosen,
+    // not merely "a smaller number": it sits comfortably under Tomcat's own default
+    // server.tomcat.threads.max=200, so every in-flight request can hold an active worker thread
+    // without ever needing the accept queue at all, and it is in the same range typical HTTP
+    // client connection-pool defaults use for a single downstream host (Apache HttpClient's own
+    // default max-per-route is far lower; 100 is already a generous, aggressive-batch-sender
+    // figure, not a conservative one). The assertion this bounds -- 0 failures -- is unchanged.
+    private static final int MAX_CONCURRENT_SUBMISSIONS = 100;
+
+    /** Submits every row in the corpus, up to {@link #MAX_CONCURRENT_SUBMISSIONS} in flight at once (virtual thread per request), and returns how many responses reported {@code duplicate: true}. */
     private int submitPass(URI intakeUri, List<String> corpusXml) throws InterruptedException {
         AtomicInteger duplicates = new AtomicInteger();
         AtomicInteger failures = new AtomicInteger();
+        Semaphore inFlight = new Semaphore(MAX_CONCURRENT_SUBMISSIONS);
         try (ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor()) {
             List<Future<?>> futures = new ArrayList<>(corpusXml.size());
             for (String xml : corpusXml) {
+                inFlight.acquire();
                 futures.add(pool.submit(() -> {
                     try {
                         HttpRequest request = HttpRequest.newBuilder(intakeUri)
@@ -167,6 +182,8 @@ class ReplayIdempotencyLoadTest {
                     } catch (Exception e) {
                         failures.incrementAndGet();
                         System.out.println("Submission failed: " + e);
+                    } finally {
+                        inFlight.release();
                     }
                 }));
             }
