@@ -8,13 +8,10 @@ import com.kishore.payments.gateway.SettlementGatewayApplication;
 import com.kishore.payments.intake.IntakeServiceApplication;
 import com.kishore.payments.processing.ProcessingServiceApplication;
 import com.kishore.payments.railsim.RailSimulatorApplication;
-import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -72,13 +69,16 @@ class ReplayIdempotencyLoadTest {
     }
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final Path CORPUS_FILE = Path.of("..", "load-test", "corpus", "replay-corpus.ndjson");
     private static final HttpClient HTTP = HttpClient.newBuilder().executor(Executors.newVirtualThreadPerTaskExecutor()).build();
 
     @Test
     void tenThousandInstructionsReplayedThreeTimesYieldTenThousandInstructionsTenThousandDispatchesAndTwentyThousandDuplicates()
             throws Exception {
-        List<String> corpusXml = loadCorpus();
+        // Generated in memory, not read from load-test/corpus/replay-corpus.ndjson: that file is
+        // gitignored and never present on a fresh checkout -- see LoadCorpusGenerator.
+        // generateReplayCorpusXml()'s own javadoc for why, and PHASE-12-REPORT.md for the CI
+        // failure this replaces a fix for.
+        List<String> corpusXml = LoadCorpusGenerator.generateReplayCorpusXml();
         assertThat(corpusXml).as("replay corpus row count").hasSize(10_000);
 
         ConfigurableApplicationContext railContext =
@@ -139,15 +139,6 @@ class ReplayIdempotencyLoadTest {
             gatewayContext.close();
             railContext.close();
         }
-    }
-
-    private List<String> loadCorpus() throws IOException {
-        List<String> lines = Files.readAllLines(CORPUS_FILE);
-        List<String> xmlBodies = new ArrayList<>(lines.size());
-        for (String line : lines) {
-            xmlBodies.add(JSON.readTree(line).path("xml").asText());
-        }
-        return xmlBodies;
     }
 
     /** Submits every row in the corpus concurrently (virtual thread per request) and returns how many responses reported {@code duplicate: true}. */

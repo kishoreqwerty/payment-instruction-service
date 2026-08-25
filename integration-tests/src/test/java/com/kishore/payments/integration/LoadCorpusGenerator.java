@@ -48,15 +48,39 @@ class LoadCorpusGenerator {
     @Test
     void generateReplayCorpus() throws Exception {
         Files.createDirectories(CORPUS_DIR);
+        List<String> xmlBodies = generateReplayCorpusXml();
+        List<String> lines = new ArrayList<>(xmlBodies.size());
         Random random = new Random(42);
-        List<String> lines = new ArrayList<>(10_000);
-        for (int i = 0; i < 10_000; i++) {
+        for (int i = 0; i < xmlBodies.size(); i++) {
+            // Rebuilding an Instruction here only to serialise account/currency/amount alongside
+            // the XML for manual/ad-hoc inspection of the file on disk -- ReplayIdempotencyLoadTest
+            // itself only ever needed the XML body (see generateReplayCorpusXml()'s own javadoc),
+            // so this disk-writing path is kept for convenience, not because the test depends on it.
             Instruction instr = randomInstruction(random, i, null, false);
             lines.add(JSON.writeValueAsString(toNode(instr)));
         }
         Files.write(
                 CORPUS_DIR.resolve("replay-corpus.ndjson"), lines, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
         System.out.println("Wrote 10000 rows to load-test/corpus/replay-corpus.ndjson (seed 42, all valid)");
+    }
+
+    /**
+     * The same 10,000-row, seed-42, all-valid replay corpus {@link #generateReplayCorpus()} writes
+     * to disk, generated in memory instead. {@code ReplayIdempotencyLoadTest} calls this directly
+     * in its own {@code @BeforeAll} rather than reading {@code load-test/corpus/replay-corpus.ndjson}
+     * from disk: that file is gitignored (13 MB, deterministically regenerable, not worth committing
+     * -- see PHASE-12-REPORT.md's correction on this), so a fresh checkout -- CI included -- never
+     * has it, and the test failed there with a missing-file error before this method existed. Same
+     * seed, same generation order, same output as the file this replaces: a run against this method
+     * and a run against a freshly-generated file are the identical corpus, not two different ones.
+     */
+    static List<String> generateReplayCorpusXml() {
+        Random random = new Random(42);
+        List<String> xmlBodies = new ArrayList<>(10_000);
+        for (int i = 0; i < 10_000; i++) {
+            xmlBodies.add(randomInstruction(random, i, null, false).xml());
+        }
+        return xmlBodies;
     }
 
     @Test
