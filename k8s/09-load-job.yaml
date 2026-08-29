@@ -1,0 +1,22 @@
+# In-cluster load generator (load-test/Dockerfile) -- see that file's own
+# comment for why this replaces a host-side k6 process reaching in over
+# kubectl port-forward: the tunnel pins to one backend pod and does not
+# follow a rollout, which corrupted an earlier attempt at this exact test.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sustained-load
+  namespace: payments
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: k6
+          image: payments/k6-load:local
+          imagePullPolicy: Never
+          args: ["k6/sustained-250.js"]
+          env:
+            - name: INTAKE_URL
+              value: http://intake-service:8081/v1/instructions

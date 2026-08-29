@@ -1,0 +1,71 @@
+# .notes/ARCHITECTURE.md §7.1: "postgres 1 replica (RDS in the AWS
+# deployment)" -- a single-replica StatefulSet is what the spec itself
+# calls for outside AWS, so this matches it directly, not a local-only
+# deviation.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: payments
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          # Default max_connections=100 is enough for docker-compose's
+          # one-host-process-per-service shape, but not for even a brief
+          # overlap of old+new pods during a Kubernetes rolling update
+          # across 4 services x 2 replicas x HikariCP's own per-instance
+          # pool -- confirmed directly: a rollout during Part 3 manifest
+          # iteration exhausted it (96/100 in use, new pods failing with
+          # "sorry, too many clients already"). Raised here rather than
+          # shrinking every service's HikariCP pool size, since the
+          # available-connections headroom is what a rolling update
+          # structurally needs, not a per-service tuning problem.
+          args: ["-c", "max_connections=300"]
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: payments
+            - name: POSTGRES_USER
+              value: payments
+            - name: POSTGRES_PASSWORD
+              value: payments
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "payments", "-d", "payments"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: payments
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432

@@ -1,0 +1,102 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: exception-service-config
+  namespace: payments
+data:
+  application-k8s.yaml: |
+    spring:
+      datasource:
+        url: jdbc:postgresql://postgres:5432/payments?stringtype=unspecified
+    payments:
+      kafka:
+        bootstrap-servers: redpanda:9092
+    management:
+      tracing:
+        sampling:
+          probability: 0
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: exception-service
+  namespace: payments
+spec:
+  # .notes/ARCHITECTURE.md §7.1 specifies 2 -- matched exactly here.
+  replicas: 2
+  selector:
+    matchLabels:
+      app: exception-service
+  template:
+    metadata:
+      labels:
+        app: exception-service
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: exception-service
+          image: payments/exception-service:local
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8084
+          env:
+            - name: SPRING_CONFIG_ADDITIONAL_LOCATION
+              value: file:/config/application-k8s.yaml
+          volumeMounts:
+            - name: config
+              mountPath: /config
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          # See processing-service's startupProbe comment
+          # (k8s/06-processing-service.yaml) for why this replaces a fixed
+          # liveness initialDelaySeconds.
+          startupProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8084
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8084
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8084
+            periodSeconds: 10
+            failureThreshold: 3
+      volumes:
+        - name: config
+          configMap:
+            name: exception-service-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: exception-service
+  namespace: payments
+spec:
+  selector:
+    app: exception-service
+  ports:
+    - port: 8084
+      targetPort: 8084
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: exception-service
+  namespace: payments
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: exception-service

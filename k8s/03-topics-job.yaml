@@ -1,0 +1,32 @@
+# In-cluster equivalent of docker-compose.yml's redpanda-topics one-shot
+# init step -- same topics, same partition counts and retention, created
+# explicitly because auto_create_topics_enabled is off (see 02-redpanda.yaml
+# comment: an auto-created topic would get default partition counts, which
+# would silently break the per-instruction ordering the partition counts
+# below exist to preserve).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: redpanda-topics
+  namespace: payments
+spec:
+  backoffLimit: 6
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: create-topics
+          image: docker.redpanda.com/redpandadata/redpanda:v24.2.4
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              rpk topic create payments.received --partitions 12 --replicas 1 --brokers redpanda:9092 -c retention.ms=604800000
+              rpk topic create payments.validated --partitions 12 --replicas 1 --brokers redpanda:9092 -c retention.ms=604800000
+              rpk topic create payments.enriched --partitions 12 --replicas 1 --brokers redpanda:9092 -c retention.ms=604800000
+              rpk topic create payments.routed --partitions 12 --replicas 1 --brokers redpanda:9092 -c retention.ms=604800000
+              rpk topic create payments.sent --partitions 12 --replicas 1 --brokers redpanda:9092 -c retention.ms=604800000
+              rpk topic create payments.settled --partitions 12 --replicas 1 --brokers redpanda:9092 -c retention.ms=2592000000
+              rpk topic create payments.exceptions --partitions 6 --replicas 1 --brokers redpanda:9092 -c retention.ms=2592000000
+              rpk topic create payments.repaired --partitions 6 --replicas 1 --brokers redpanda:9092 -c retention.ms=604800000
+              rpk topic create payments.dlq --partitions 3 --replicas 1 --brokers redpanda:9092 -c retention.ms=7776000000

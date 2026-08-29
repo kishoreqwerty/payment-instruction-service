@@ -23,9 +23,23 @@
       <version>${project.version}</version>
     </dependency>
 
-    <!-- Same starter set as intake-service, minus the web layer: this
-         service has no HTTP API of its own, only a Kafka consumer and
-         actuator endpoints. -->
+    <!-- This service has no HTTP API of its own (spring.main.web-application-type:
+         none, see application.yml), only a Kafka consumer and actuator
+         endpoints on their own management.server.port. spring-boot-starter-web
+         is still required even so: spring-boot-starter-actuator alone provides
+         no embeddable HTTP server implementation, so with web-application-type
+         none and no web starter, management.server.port was a silent no-op,
+         confirmed directly (Part 3, .notes/reports/PHASE-12-REPORT.md section 9):
+         the app started and ran its Kafka consumers correctly, logged "Started
+         ProcessingServiceApplication", and never opened any server socket at
+         all, no error, because there was nothing to fail, just nothing built
+         to succeed either. web-application-type none still prevents a main
+         web server from starting; this dependency only supplies the embeddable
+         server class the separate management context needs. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>

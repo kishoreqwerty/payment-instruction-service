@@ -1,0 +1,118 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: processing-service-config
+  namespace: payments
+data:
+  application-k8s.yaml: |
+    spring:
+      datasource:
+        url: jdbc:postgresql://postgres:5432/payments?stringtype=unspecified
+    payments:
+      kafka:
+        bootstrap-servers: redpanda:9092
+    management:
+      tracing:
+        sampling:
+          probability: 0
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: processing-service
+  namespace: payments
+spec:
+  # .notes/ARCHITECTURE.md §7.1 specifies 4; run here as 2, like
+  # intake-service and settlement-gateway -- see .notes/reports/PHASE-12-REPORT.md
+  # §9 for the local-capacity reasoning. (The 42-partition consumer group
+  # was suspected as the cause of a long chase through apparent startup
+  # hangs during this session's own manifest iteration; that suspicion was
+  # wrong -- root cause was a real, separate defect, application.yml and
+  # pom.xml now fixed, and unrelated host clock instability that was
+  # corrupting every wall-clock-based timeout on this machine during that
+  # window. Full account in §9.)
+  replicas: 2
+  selector:
+    matchLabels:
+      app: processing-service
+  template:
+    metadata:
+      labels:
+        app: processing-service
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: processing-service
+          image: payments/processing-service:local
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8082
+          env:
+            - name: SPRING_CONFIG_ADDITIONAL_LOCATION
+              value: file:/config/application-k8s.yaml
+          volumeMounts:
+            - name: config
+              mountPath: /config
+          resources:
+            requests:
+              cpu: 500m
+              memory: 768Mi
+            limits:
+              cpu: 2000m
+              memory: 1536Mi
+          # startupProbe, not a long initialDelaySeconds on liveness: a fixed
+          # delay guesses at startup time, and guessing wrong is
+          # self-defeating -- confirmed directly here, where a 90s delay
+          # killed this container every single attempt before it ever
+          # finished joining its 42-partition x 2-replica consumer group,
+          # so it could never actually succeed no matter how many times it
+          # restarted. A startupProbe disables liveness/readiness entirely
+          # until it succeeds once, so a slow-but-healthy startup gets as
+          # long as it genuinely needs (up to failureThreshold x
+          # periodSeconds = 300s here) without a slow container ever being
+          # killed mid-startup.
+          startupProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8082
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8082
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8082
+            periodSeconds: 10
+            failureThreshold: 3
+      volumes:
+        - name: config
+          configMap:
+            name: processing-service-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: processing-service
+  namespace: payments
+spec:
+  selector:
+    app: processing-service
+  ports:
+    - port: 8082
+      targetPort: 8082
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: processing-service
+  namespace: payments
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: processing-service

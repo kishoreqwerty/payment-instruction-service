@@ -1,6 +1,12 @@
 spring:
   application:
     name: intake-service
+  lifecycle:
+    # Paired with server.shutdown: graceful below and Kubernetes'
+    # terminationGracePeriodSeconds: 60 (.notes/ARCHITECTURE.md §7.1) -- on
+    # SIGTERM, stop accepting new requests but let in-flight ones finish
+    # rather than cutting them off mid-transaction during a rolling update.
+    timeout-per-shutdown-phase: 30s
   datasource:
     # stringtype=unspecified lets the driver send enum values (InstructionState)
     # as untyped string literals so Postgres can implicitly cast them to the
@@ -82,7 +88,7 @@ management:
       show-details: always
       group:
         readiness:
-          include: readinessState,db
+          include: readinessState,db,kafka
   tracing:
     sampling:
       # 100% locally: see .notes/reports/PHASE-10-REPORT.md section 5 for
@@ -95,3 +101,4 @@ management:
 
 server:
   port: 8081
+  shutdown: graceful

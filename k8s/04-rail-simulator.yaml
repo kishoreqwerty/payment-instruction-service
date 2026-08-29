@@ -1,0 +1,61 @@
+# Test double for an external clearing rail -- not one of §7.1's real
+# deployment services (no entry there), so no PDB and no resource spec to
+# match; deployed only so settlement-gateway has something in-cluster to
+# dispatch against.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rail-simulator
+  namespace: payments
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rail-simulator
+  template:
+    metadata:
+      labels:
+        app: rail-simulator
+    spec:
+      containers:
+        - name: rail-simulator
+          image: payments/rail-simulator:local
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8085
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8085
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # timeoutSeconds raised from the 1s default -- confirmed directly
+          # (Part 3, .notes/reports/PHASE-12-REPORT.md section 9) that 1s was
+          # tight enough to trip under sustained 250/sec callback traffic,
+          # killing this pod mid-test. Since its scenario config is in-memory
+          # (ScenarioLoader/RailState, no persistence), that restart silently
+          # reverted every rail to its unconfigured default callback URL,
+          # which doesn't match settlement-gateway's real endpoint --
+          # confirmations went nowhere until the scenario was reloaded again.
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8085
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rail-simulator
+  namespace: payments
+spec:
+  selector:
+    app: rail-simulator
+  ports:
+    - port: 8085
+      targetPort: 8085

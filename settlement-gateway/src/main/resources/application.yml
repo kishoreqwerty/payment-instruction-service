@@ -1,9 +1,16 @@
 server:
   port: 8083
+  shutdown: graceful
 
 spring:
   application:
     name: settlement-gateway
+  lifecycle:
+    # Paired with server.shutdown: graceful above and Kubernetes'
+    # terminationGracePeriodSeconds: 60 (.notes/ARCHITECTURE.md §7.1) -- on
+    # SIGTERM, stop accepting new requests but let in-flight ones finish
+    # rather than cutting them off mid-transaction during a rolling update.
+    timeout-per-shutdown-phase: 30s
   datasource:
     url: jdbc:postgresql://localhost:5432/payments?stringtype=unspecified
     username: payments
@@ -106,4 +113,4 @@ management:
       show-details: always
       group:
         readiness:
-          include: readinessState,db
+          include: readinessState,db,kafka

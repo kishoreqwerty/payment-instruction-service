@@ -1,11 +1,16 @@
 spring:
   application:
     name: processing-service
-  main:
-    # No HTTP API: only a Kafka consumer and actuator endpoints, which
-    # actuator's own embedded server config (management.server.port) can
-    # still expose without the full web stack.
-    web-application-type: none
+  lifecycle:
+    # Paired with server.shutdown: graceful below and Kubernetes'
+    # terminationGracePeriodSeconds: 60 (.notes/ARCHITECTURE.md §7.1): on
+    # SIGTERM, stop accepting new work but let what's in flight finish --
+    # both the web server's own in-flight requests (there are normally none,
+    # this service has no REST API of its own) and, more importantly,
+    # Spring Kafka's own listener container shutdown (SmartLifecycle stop,
+    # on by default), which needs time to finish the in-flight record each
+    # container thread is mid-way through before the process actually exits.
+    timeout-per-shutdown-phase: 30s
   datasource:
     url: jdbc:postgresql://localhost:5432/payments?stringtype=unspecified
     username: payments
@@ -61,12 +66,23 @@ management:
       show-details: always
       group:
         readiness:
-          include: readinessState,db
+          include: readinessState,db,kafka
   tracing:
     sampling:
       probability: 1.0
   otlp:
     tracing:
       endpoint: http://localhost:4318/v1/traces
-  server:
-    port: 8082
+
+# A single server.port, not a separate management.server.port with
+# spring.main.web-application-type: none -- that combination was found not
+# to reliably start an embedded server at all in this Spring Boot version,
+# confirmed directly (Part 3, .notes/reports/PHASE-12-REPORT.md section 9):
+# even with spring-boot-starter-web added, Spring Boot never logged a
+# Tomcat startup and the actuator port never opened. This service has no
+# REST API of its own, but running it as a plain, single-port Spring Boot
+# web application -- the same proven-reliable shape as the other three
+# services -- is simpler and safer than the two-context split.
+server:
+  port: 8082
+  shutdown: graceful

@@ -1,0 +1,93 @@
+# .notes/ARCHITECTURE.md §7.1 specifies 3 replicas (MSK in the AWS
+# deployment). Deployed here as 1, matching this project's own existing
+# local-dev precedent (docker-compose.yml's redpanda service is also a
+# single node) rather than inventing a new local-only shape -- a 3-node
+# Redpanda cluster is real infrastructure work orthogonal to what Part 3 is
+# testing (deployment topology, probes, PDB, rolling updates), and this
+# session's own host was already shown in Part 1 to be memory-constrained
+# well below what even one JVM-heavy replica set costs. Recorded as a
+# deviation, not left unstated.
+#
+# Only one listener is needed here (unlike docker-compose.yml's
+# internal/external split): every client reaching this broker, in-cluster
+# app pod or in-cluster Job, resolves it the same way, via the Service DNS
+# name below.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redpanda
+  namespace: payments
+spec:
+  serviceName: redpanda
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redpanda
+  template:
+    metadata:
+      labels:
+        app: redpanda
+    spec:
+      containers:
+        - name: redpanda
+          image: docker.redpanda.com/redpandadata/redpanda:v24.2.4
+          # args, not command: this image's ENTRYPOINT (/entrypoint.sh) does
+          # setup docker-compose's own `command:` override (Docker CMD, not
+          # ENTRYPOINT) relies on implicitly. Kubernetes' `command:` field
+          # maps to Docker's --entrypoint and would bypass that script
+          # entirely -- confirmed the hard way: with `command:` here, the
+          # bare `redpanda` binary rejected --node-id=0 as an unrecognised
+          # option, a flag docker-compose's own working config passes the
+          # same way but through the entrypoint script's own arg handling.
+          args:
+            - redpanda
+            - start
+            # --smp=1 (docker-compose's own value, fine for a handful of
+            # host-process consumers joining one at a time) turned out not
+            # to be enough here: confirmed directly that processing-service
+            # -- 2 replicas x 42 partitions = 84 concurrent consumer-group
+            # members, all joining at once -- took several minutes to
+            # converge against a single-shard broker, long enough to
+            # outrun even a 300s startupProbe and force repeated restarts
+            # that each reset the join from scratch. Raised to 2 shards.
+            - --smp=2
+            - --memory=1G
+            - --overprovisioned
+            - --node-id=0
+            - --kafka-addr
+            - internal://0.0.0.0:9092
+            - --advertise-kafka-addr
+            - internal://redpanda.payments.svc.cluster.local:9092
+            - --set
+            - redpanda.auto_create_topics_enabled=false
+          ports:
+            - containerPort: 9092
+          readinessProbe:
+            exec:
+              command: ["rpk", "cluster", "health", "--exit-when-healthy"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/redpanda/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redpanda
+  namespace: payments
+spec:
+  selector:
+    app: redpanda
+  ports:
+    - port: 9092
+      targetPort: 9092

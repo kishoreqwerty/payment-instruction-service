@@ -1,0 +1,113 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: intake-service-config
+  namespace: payments
+data:
+  # Layered on top of the jar's own application.yml via
+  # SPRING_CONFIG_ADDITIONAL_LOCATION -- only what genuinely differs
+  # in-cluster (host names; localhost:5432/29092/4318 mean nothing inside a
+  # pod), everything else (schemas, batch sizes, health group membership)
+  # comes from the image unchanged.
+  application-k8s.yaml: |
+    spring:
+      datasource:
+        url: jdbc:postgresql://postgres:5432/payments?stringtype=unspecified
+    payments:
+      kafka:
+        bootstrap-servers: redpanda:9092
+    management:
+      tracing:
+        sampling:
+          probability: 0
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: intake-service
+  namespace: payments
+spec:
+  # .notes/ARCHITECTURE.md §7.1 specifies 3. Run here as 2 -- see
+  # .notes/reports/PHASE-12-REPORT.md §9 for the arithmetic (this host's
+  # Docker Desktop allocation cannot fit §7.1's full replica counts across
+  # all four services at their specified limits) and why 2, not 1: a
+  # PodDisruptionBudget of minAvailable:1 is meaningless with only one
+  # replica -- there would be no room to ever take one down for a rolling
+  # update without violating it.
+  replicas: 2
+  selector:
+    matchLabels:
+      app: intake-service
+  template:
+    metadata:
+      labels:
+        app: intake-service
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: intake-service
+          image: payments/intake-service:local
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8081
+          env:
+            - name: SPRING_CONFIG_ADDITIONAL_LOCATION
+              value: file:/config/application-k8s.yaml
+          volumeMounts:
+            - name: config
+              mountPath: /config
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          # See processing-service's startupProbe comment
+          # (k8s/06-processing-service.yaml) for why this replaces a fixed
+          # liveness initialDelaySeconds.
+          startupProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8081
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8081
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8081
+            periodSeconds: 10
+            failureThreshold: 3
+      volumes:
+        - name: config
+          configMap:
+            name: intake-service-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: intake-service
+  namespace: payments
+spec:
+  selector:
+    app: intake-service
+  ports:
+    - port: 8081
+      targetPort: 8081
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: intake-service
+  namespace: payments
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: intake-service
